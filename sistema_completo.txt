@@ -1,0 +1,1435 @@
+--- AUDITORÍA DE SISTEMA ALUCILEX ---
+
+
+// ==========================================
+// 📁 ARCHIVO: asignar_tipo_ley.js
+// ==========================================
+
+// asignar_tipo_desde_metadatos.js
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+async function asignarTipoDesdeMetadatos() {
+    console.log("Actualizando columna 'tipo' desde metadatos->>tipo en lotes...");
+
+    let totalActualizados = 0;
+    let offset = 0;
+    const loteSize = 1000;
+    let continuar = true;
+
+    while (continuar) {
+        // Obtener un lote de IDs donde metadatos->>tipo = 'ley' Y tipo IS NULL (opcional)
+        const { data: fragmentos, error: selectError } = await supabase
+            .from('fragmentos_legales')
+            .select('id')
+            .eq('metadatos->>tipo', 'ley')
+            .is('tipo', null)   // solo los que aún no tienen tipo asignado
+            .range(offset, offset + loteSize - 1);
+
+        if (selectError) {
+            console.error("Error al seleccionar:", selectError);
+            break;
+        }
+
+        if (!fragmentos || fragmentos.length === 0) {
+            continuar = false;
+            break;
+        }
+
+        const ids = fragmentos.map(f => f.id);
+        const { error: updateError } = await supabase
+            .from('fragmentos_legales')
+            .update({ tipo: 'ley' })
+            .in('id', ids);
+
+        if (updateError) {
+            console.error("Error al actualizar lote:", updateError);
+            break;
+        }
+
+        totalActualizados += ids.length;
+        console.log(`Lote ${Math.floor(offset / loteSize) + 1}: actualizados ${ids.length} (total acumulado: ${totalActualizados})`);
+        offset += loteSize;
+    }
+
+    console.log(`\n✅ Proceso completado. Total de fragmentos actualizados a 'ley': ${totalActualizados}`);
+}
+
+asignarTipoDesdeMetadatos();
+
+
+// ==========================================
+// 📁 ARCHIVO: auditor.js
+// ==========================================
+
+// ALUCILEX - Escáner de Apuntes Únicos (Doctrina)
+// Ubicación: C:\Alucilex\escaner.js
+
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+async function escanearApuntes() {
+    console.log("\n==========================================");
+    console.log("📚 ESCANEANDO ÍNDICE DE DOCTRINA (ORREGO)");
+    console.log("==========================================\n");
+    console.log("⏳ Leyendo 11.000+ registros... (esto puede tardar unos segundos)\n");
+
+    try {
+        let todosLosTitulos = new Set();
+        let limite = 1000; // Supabase lee de a 1000 filas por defecto
+        let offset = 0;
+        let hayMas = true;
+
+        // Bucle para leer toda la base de datos de principio a fin
+        while (hayMas) {
+            const { data, error } = await supabase
+                .from('fragmentos_legales')
+                .select('metadatos')
+                .eq('metadatos->>tipo', 'doctrina')
+                .range(offset, offset + limite - 1);
+
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                hayMas = false; // Ya no hay más filas
+            } else {
+                data.forEach(item => {
+                    if (item.metadatos && item.metadatos.articulo) {
+                        // Cortamos el texto justo donde dice " - Parte" para obtener solo el título principal
+                        let nombreBase = item.metadatos.articulo.split(' - Parte')[0].trim();
+                        todosLosTitulos.add(nombreBase);
+                    }
+                });
+                offset += limite; // Avanzamos al siguiente bloque de 1000
+            }
+        }
+
+        // Convertimos el Set a Array y lo ordenamos alfabéticamente
+        let listaOrdenada = Array.from(todosLosTitulos).sort();
+
+        console.log(`✅ SE ENCONTRARON ${listaOrdenada.length} APUNTES DISTINTOS:\n`);
+        
+        listaOrdenada.forEach((titulo, index) => {
+            console.log(`   ${index + 1}. ${titulo}`);
+        });
+
+        console.log("\n==========================================");
+        console.log("✅ ESCANEO COMPLETADO");
+        console.log("==========================================\n");
+
+    } catch (error) {
+        console.error("❌ Error al escanear:", error.message);
+    }
+}
+
+escanearApuntes();cls
+
+
+// ==========================================
+// 📁 ARCHIVO: buscador_doctrina.js
+// ==========================================
+
+// ALUCILEX - Motor de Recuperación de Doctrina (Prueba de Memoria)
+// Ubicación: C:\Alucilex\buscador_doctrina.js
+
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+
+// 1. Conexión segura con tolerancia de nombres
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+    console.error("❌ Error Crítico: Faltan las credenciales de Supabase en tu archivo .env");
+    process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// 2. Función principal de búsqueda
+async function escanearCerebro(palabraClave) {
+    console.log(`\n🧠 Activando red neuronal de Alucilex...`);
+    console.log(`🔍 Buscando concepto: "${palabraClave}" dentro de la doctrina de Orrego...\n`);
+
+    // Hacemos la consulta a Supabase filtrando solo la doctrina
+    const { data, error } = await supabase
+        .from('fragmentos_legales')
+        .select('contenido, metadatos')
+        .filter('metadatos->>tipo', 'eq', 'doctrina') // Filtramos para que no busque en el Código Civil por ahora
+        .ilike('contenido', `%${palabraClave}%`) // Búsqueda por coincidencia de texto
+        .limit(3); // Traemos solo los 3 mejores resultados para no saturar la pantalla
+
+    if (error) {
+        console.error("❌ Fallo en la sinapsis con Supabase:", error.message);
+        return;
+    }
+
+    if (!data || data.length === 0) {
+        console.log(`⚠️ Alucilex no encontró fragmentos que contengan la palabra "${palabraClave}".`);
+        return;
+    }
+
+    console.log(`✅ Recuperación exitosa. Se extrajeron ${data.length} fragmentos clave:\n`);
+
+    // Mostramos los resultados de forma elegante
+    data.forEach((frag, index) => {
+        console.log(`==========================================`);
+        console.log(`📌 RESULTADO ${index + 1} | ORIGEN: ${frag.metadatos.articulo}`);
+        console.log(`==========================================`);
+        // Mostramos los primeros 400 caracteres para ver si tiene sentido
+        console.log(`${frag.contenido.substring(0, 400)}...\n`);
+    });
+}
+
+// 3. Ejecución de la prueba: Vamos a buscar qué dice Orrego sobre el "Comodato"
+escanearCerebro("comodato");
+
+
+// ==========================================
+// 📁 ARCHIVO: consultor.js
+// ==========================================
+
+// ALUCILEX - Consultor con búsqueda por número de artículo exacto
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+const axios = require('axios');
+const readline = require('readline');
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const MODELO_IA = "openrouter/free";
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+// Diccionario simplificado (solo mapea concepto -> número de artículo)
+const DICCIONARIO = {
+    "ley": "1",
+    "tradicion": "670",
+    "contrato": "1438",
+    "ocupacion": "606",
+    "acto juridico": "1444"
+};
+
+function normalizar(texto) {
+    return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+async function buscarArticuloLey(numeroArticulo) {
+    const { data } = await supabase
+        .from('fragmentos_legales')
+        .select('contenido, articulo_titulo_completo, articulo_numero')
+        .eq('tipo', 'ley')
+        .eq('articulo_numero', numeroArticulo)
+        .maybeSingle();
+    return data;
+}
+
+async function buscarDoctrina(terminos) {
+    if (!terminos.length) return [];
+    // Búsqueda por coincidencia en contenido (ilike) y limitamos a 3 resultados para no saturar
+    const condiciones = terminos.map(t => `contenido.ilike.%${t}%`).join(',');
+    const { data } = await supabase
+        .from('fragmentos_legales')
+        .select('contenido, articulo_titulo_completo, autor')
+        .eq('tipo', 'doctrina')
+        .or(condiciones)
+        .limit(3);
+    return data || [];
+}
+
+async function realizarConsultaLegal(preguntaUsuario) {
+    if (!preguntaUsuario || preguntaUsuario.toLowerCase() === 'salir') process.exit(0);
+
+    console.log(`\n🔍 Consulta: "${preguntaUsuario}"\n`);
+
+    const textoLimpio = normalizar(preguntaUsuario);
+    let concepto = Object.keys(DICCIONARIO).find(key => textoLimpio.includes(key));
+
+    let respuesta = "";
+
+    // 1. Búsqueda exacta en Código Civil
+    if (concepto) {
+        const articulo = await buscarArticuloLey(DICCIONARIO[concepto]);
+        if (articulo) {
+            respuesta += `\n📜 CÓDIGO CIVIL - ARTÍCULO ${articulo.articulo_numero}:\n${articulo.contenido}\n---\n`;
+        }
+    } else {
+        // Si no hay concepto en el diccionario, intentamos extraer un número de artículo de la pregunta
+        const posibleNumero = textoLimpio.match(/\b(art[íi]culo\s*)?(\d{1,4})\b/i);
+        if (posibleNumero && posibleNumero[2]) {
+            const articulo = await buscarArticuloLey(posibleNumero[2]);
+            if (articulo) {
+                respuesta += `\n📜 CÓDIGO CIVIL - ARTÍCULO ${articulo.articulo_numero}:\n${articulo.contenido}\n---\n`;
+            }
+        }
+    }
+
+    // 2. Búsqueda en Doctrina
+    let terminosBusqueda = [];
+    if (concepto) {
+        terminosBusqueda = [concepto];
+    } else {
+        terminosBusqueda = textoLimpio.split(' ').filter(p => p.length > 3 && !['que','como','para','los','las','una'].includes(p));
+        if (terminosBusqueda.length === 0) terminosBusqueda = [textoLimpio];
+    }
+
+    const doctrina = await buscarDoctrina(terminosBusqueda);
+    if (doctrina.length) {
+        respuesta += `\n📚 DOCTRINA (fragmentos relevantes):\n`;
+        doctrina.forEach((d, i) => {
+            respuesta += `\n--- ${d.articulo_titulo_completo} (${d.autor}) ---\n${d.contenido.substring(0, 800)}...\n`;
+        });
+    }
+
+    if (!respuesta) {
+        console.log("❌ No se encontró información en la base de datos.");
+        preguntar();
+        return;
+    }
+
+    // 3. Enviar a la IA
+    const prompt = `Usa la siguiente información para responder la consulta del usuario. 
+Respeta el texto literal del Código Civil. Para la doctrina, puedes resumir.
+
+CONSULTA: ${preguntaUsuario}
+
+INFORMACIÓN DISPONIBLE:
+${respuesta}
+
+INSTRUCCIÓN: Si hay artículo del Código Civil, transcríbelo literalmente. Si hay doctrina, resúmela de forma clara.`;
+
+    try {
+        const response = await axios.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            {
+                model: MODELO_IA,
+                messages: [{ role: "user", content: prompt }],
+                temperature: 0.2,
+                max_tokens: 800
+            },
+            { headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}` } }
+        );
+
+        console.log("\n==========================================");
+        console.log("📚 RESPUESTA FINAL:");
+        console.log("==========================================");
+        console.log(response.data.choices[0].message.content);
+        console.log("==========================================\n");
+
+    } catch (error) {
+        console.error("❌ Error al consultar IA. Mostrando información cruda:");
+        console.log(respuesta);
+    }
+
+    preguntar();
+}
+
+function preguntar() {
+    rl.question('\n💬 ¿Qué quieres consultar? (salir para terminar): ', realizarConsultaLegal);
+}
+
+console.log("\n⚖️  ALUCILEX v19 - Búsqueda por artículo exacto + Doctrina");
+console.log("==========================================");
+preguntar();
+
+
+// ==========================================
+// 📁 ARCHIVO: diagnosticar_tabla.js
+// ==========================================
+
+// diagnosticar_tabla.js
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+async function diagnosticar() {
+    // Obtener un solo registro para ver sus campos
+    const { data, error } = await supabase
+        .from('fragmentos_legales')
+        .select('*')
+        .limit(1);
+    
+    if (error) {
+        console.error("Error:", error);
+        return;
+    }
+    
+    if (data && data[0]) {
+        console.log("Estructura de un registro:");
+        console.log(Object.keys(data[0]));
+        console.log("\nValores de ejemplo:");
+        console.log("tipo:", data[0].tipo);
+        console.log("metadatos:", data[0].metadatos);
+    } else {
+        console.log("No hay datos");
+    }
+}
+
+diagnosticar();
+
+
+// ==========================================
+// 📁 ARCHIVO: diagnostico.js
+// ==========================================
+
+// diagnostico.js
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+async function verificarTamanioDoctrina() {
+    console.log("\n🔍 DIAGNÓSTICO DE BASE DE DATOS\n");
+    
+    const { data: doctrina, error } = await supabase
+        .from('fragmentos_legales')
+        .select('contenido, metadatos')
+        .eq('metadatos->>tipo', 'doctrina')
+        .limit(5);
+    
+    if (error) {
+        console.error("Error:", error);
+        return;
+    }
+    
+    if (!doctrina || doctrina.length === 0) {
+        console.log("❌ No se encontraron textos doctrinales");
+        return;
+    }
+    
+    console.log(`📊 TOTAL DE TEXTOS DOCTRINALES ENCONTRADOS: ${doctrina.length}\n`);
+    
+    let totalCaracteres = 0;
+    
+    doctrina.forEach((d, i) => {
+        const tamaño = d.contenido.length;
+        totalCaracteres += tamaño;
+        console.log(`📚 Texto doctrinal ${i+1}:`);
+        console.log(`   📏 Tamaño: ${tamaño} caracteres`);
+        console.log(`   📝 Fuente: ${d.metadatos?.fuente || 'No especificada'}`);
+        console.log(`   🏷️  Tema: ${d.metadatos?.tema || 'No especificado'}`);
+        console.log(`   📄 Preview: ${d.contenido.substring(0, 100)}...`);
+        console.log(`   ---`);
+    });
+    
+    console.log(`\n📈 RESUMEN:`);
+    console.log(`   Total de caracteres (5 textos): ${totalCaracteres}`);
+    console.log(`   Promedio por texto: ${Math.round(totalCaracteres/5)} caracteres`);
+    
+    if (totalCaracteres > 10000) {
+        console.log(`\n⚠️ ALERTA: 5 textos doctrinales suman ${totalCaracteres} caracteres`);
+        console.log(`   Esto excede el límite típico de la API (8000-12000 caracteres)`);
+        console.log(`   Recomendación: Limitar a 1-2 textos por consulta`);
+    }
+}
+
+verificarTamanioDoctrina();sali
+
+
+// ==========================================
+// 📁 ARCHIVO: diagnostico_embeddings.js
+// ==========================================
+
+// diagnostico_embeddings.js
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+async function diagnosticarEmbeddings() {
+    console.log("\n📊 DIAGNÓSTICO DE EMBEDDINGS EN LA BASE DE DATOS\n");
+    console.log("==========================================");
+
+    // Total de fragmentos
+    const { count: total, error: errTotal } = await supabase
+        .from('fragmentos_legales')
+        .select('*', { count: 'exact', head: true });
+    if (errTotal) throw errTotal;
+
+    // Total con embedding no nulo
+    const { count: conEmbedding, error: errCon } = await supabase
+        .from('fragmentos_legales')
+        .select('*', { count: 'exact', head: true })
+        .not('embedding', 'is', null);
+    if (errCon) throw errCon;
+
+    console.log(`📦 TOTAL DE FRAGMENTOS: ${total}`);
+    console.log(`✅ CON EMBEDDING: ${conEmbedding}`);
+    console.log(`❌ SIN EMBEDDING: ${total - conEmbedding}`);
+    console.log(`📈 PROGRESO: ${((conEmbedding / total) * 100).toFixed(2)}%\n`);
+
+    // Desglose por tipo (ley vs doctrina)
+    const { data: tipos, error: errTipos } = await supabase
+        .from('fragmentos_legales')
+        .select('tipo, embedding')
+        .not('tipo', 'is', null);
+    if (errTipos) throw errTipos;
+
+    const resumen = {
+        ley: { total: 0, conEmbedding: 0 },
+        doctrina: { total: 0, conEmbedding: 0 }
+    };
+
+    for (const row of tipos) {
+        const t = row.tipo;
+        if (t === 'ley') {
+            resumen.ley.total++;
+            if (row.embedding) resumen.ley.conEmbedding++;
+        } else if (t === 'doctrina') {
+            resumen.doctrina.total++;
+            if (row.embedding) resumen.doctrina.conEmbedding++;
+        }
+    }
+
+    console.log("📚 DESGLOSE POR TIPO:");
+    console.log(`   📜 CÓDIGO CIVIL (ley): ${resumen.ley.conEmbedding} / ${resumen.ley.total} embeddings (${((resumen.ley.conEmbedding / resumen.ley.total) * 100).toFixed(2)}%)`);
+    console.log(`   📖 DOCTRINA ORREGO: ${resumen.doctrina.conEmbedding} / ${resumen.doctrina.total} embeddings (${((resumen.doctrina.conEmbedding / resumen.doctrina.total) * 100).toFixed(2)}%)`);
+
+    console.log("\n==========================================");
+}
+
+diagnosticarEmbeddings();
+
+
+// ==========================================
+// 📁 ARCHIVO: generar_embeddings_768.js
+// ==========================================
+
+// generar_embeddings_768.js - Genera embeddings para fragmentos sin uno
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const openai = new OpenAI({ 
+    apiKey: process.env.OPENROUTER_API_KEY, 
+    baseURL: 'https://openrouter.ai/api/v1' 
+});
+
+async function generarEmbeddings() {
+    console.log("🧠 Generando embeddings (dimensión 768) para fragmentos sin embedding...\n");
+
+    let procesados = 0;
+    let total = 0;
+
+    while (true) {
+        const { data: fragmentos, error } = await supabase
+            .from('fragmentos_legales')
+            .select('id, contenido')
+            .is('embedding', null)
+            .limit(50); // Lotes pequeños para evitar timeout
+
+        if (error) throw error;
+        if (!fragmentos.length) break;
+
+        total += fragmentos.length;
+        console.log(`📦 Procesando lote de ${fragmentos.length} fragmentos (total pendiente: ~${total})...`);
+
+        for (const frag of fragmentos) {
+            try {
+                // Recortar contenido si es muy largo (máximo 8000 caracteres para el embedding)
+                const texto = frag.contenido.substring(0, 8000);
+                const response = await openai.embeddings.create({
+                    model: 'text-embedding-3-small',
+                    input: texto,
+                    dimensions: 768
+                });
+                const embedding = response.data[0].embedding;
+
+                await supabase
+                    .from('fragmentos_legales')
+                    .update({ embedding })
+                    .eq('id', frag.id);
+
+                procesados++;
+                console.log(`   ✅ Embedding para ID ${frag.id} (${procesados} procesados)`);
+            } catch (err) {
+                console.error(`   ❌ Error en fragmento ${frag.id}:`, err.message);
+            }
+            // Pequeña pausa para no saturar la API
+            await new Promise(r => setTimeout(r, 200));
+        }
+        console.log(`--- Lote completado. Total embeddings generados hasta ahora: ${procesados} ---\n`);
+    }
+
+    console.log(`\n🎉 PROCESO COMPLETADO. Se generaron ${procesados} embeddings.`);
+}
+
+generarEmbeddings();
+
+
+// ==========================================
+// 📁 ARCHIVO: generar_embeddings_pendientes.js
+// ==========================================
+
+// generar_embeddings_pendientes.js
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
+const fs = require('fs');
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const openai = new OpenAI({ 
+    apiKey: process.env.OPENROUTER_API_KEY, 
+    baseURL: 'https://openrouter.ai/api/v1' 
+});
+
+const PROGRESO_FILE = './embedding_progreso.json';
+
+// Cargar IDs ya procesados
+let procesados = new Set();
+if (fs.existsSync(PROGRESO_FILE)) {
+    const data = JSON.parse(fs.readFileSync(PROGRESO_FILE, 'utf8'));
+    procesados = new Set(data.procesados || []);
+    console.log(`📂 Progreso cargado: ${procesados.size} embeddings ya generados.`);
+}
+
+async function generarPendientes() {
+    console.log("\n🧠 Buscando fragmentos sin embedding...\n");
+
+    let offset = 0;
+    const LIMITE = 50;  // Procesar de a 50 por ciclo para no saturar
+    let totalGenerados = 0;
+
+    while (true) {
+        // Obtener fragmentos sin embedding, excluyendo los ya procesados
+        let query = supabase
+            .from('fragmentos_legales')
+            .select('id, contenido')
+            .is('embedding', null);
+
+        if (procesados.size > 0) {
+            query = query.not('id', 'in', `(${Array.from(procesados).join(',')})`);
+        }
+
+        const { data: fragmentos, error } = await query.range(offset, offset + LIMITE - 1);
+
+        if (error) throw error;
+        if (!fragmentos || fragmentos.length === 0) break;
+
+        console.log(`📦 Procesando lote de ${fragmentos.length} fragmentos (${totalGenerados} generados hasta ahora)...`);
+
+        for (const frag of fragmentos) {
+            try {
+                const response = await openai.embeddings.create({
+                    model: 'nvidia/llama-nemotron-embed-vl-1b-v2:free',
+                    input: frag.contenido.substring(0, 8000),
+                    dimensions: 768
+                });
+                await supabase
+                    .from('fragmentos_legales')
+                    .update({ embedding: response.data[0].embedding })
+                    .eq('id', frag.id);
+
+                procesados.add(frag.id);
+                totalGenerados++;
+                fs.writeFileSync(PROGRESO_FILE, JSON.stringify({ procesados: Array.from(procesados) }, null, 2));
+                console.log(`✅ ID ${frag.id} (total acumulado: ${totalGenerados})`);
+            } catch (err) {
+                console.error(`❌ Error ID ${frag.id}:`, err.message);
+                // Guardar progreso y salir para poder reanudar después
+                return;
+            }
+            await new Promise(r => setTimeout(r, 300));
+        }
+        offset += LIMITE;
+    }
+
+    console.log("\n🎉 ¡PROCESO COMPLETADO! Todos los fragmentos tienen embedding.");
+}
+
+generarPendientes();
+
+
+// ==========================================
+// 📁 ARCHIVO: ingestor.js
+// ==========================================
+
+// ALUCILEX - Motor de Ingestión Legal Jerárquica (con columnas separadas)
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+    console.error("❌ Error Crítico: Faltan credenciales de Supabase en el archivo .env");
+    process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+async function ejecutarIngestion() {
+    console.log(`\n==========================================`);
+    console.log(`🚀 INICIANDO INGESTIÓN DE CÓDIGO CIVIL`);
+    console.log(`==========================================`);
+
+    try {
+        // Purga solo los registros de tipo 'ley'
+        console.log(`\n🧹 Purgando artículos anteriores...`);
+        const { error: deleteError } = await supabase
+            .from('fragmentos_legales')
+            .delete()
+            .eq('tipo', 'ley');
+        if (deleteError) throw new Error(`Fallo en la purga: ${deleteError.message}`);
+        console.log(`✅ Purga completada.`);
+
+        // Lectura del JSON
+        if (!fs.existsSync('./data/leyes.json')) {
+            throw new Error("No se encuentra el archivo ./data/leyes.json. Ejecuta primero robot_bcn.js");
+        }
+        const rawData = fs.readFileSync('./data/leyes.json', 'utf8');
+        const articulos = JSON.parse(rawData);
+        console.log(`✅ Se encontraron ${articulos.length} artículos.`);
+
+        // Mapeo a nuevas columnas
+        const registros = articulos.map(art => {
+            let libro = null;
+            let titulo = null;
+            let articulo_numero = null;
+            let articulo_titulo_completo = art.titulo;
+
+            // Extraer libro: [Libro IV] o [Libro I]
+            const libroMatch = art.titulo.match(/\[Libro\s+([^\]]+)\]/i);
+            if (libroMatch) libro = libroMatch[1].trim();
+
+            // Extraer título: [Título XXIX - Del Comodato]
+            const tituloMatch = art.titulo.match(/\[Título\s+([^\]]+)\]/i);
+            if (tituloMatch) titulo = tituloMatch[1].trim();
+
+            // Extraer número de artículo: Art. 2174 o Artículo 1º
+            const artNumMatch = art.titulo.match(/Art\.?\s*(\d+[a-zA-Zº°]*)/i);
+            if (artNumMatch) articulo_numero = artNumMatch[1].trim();
+
+            return {
+                contenido: art.contenido,
+                tipo: 'ley',
+                libro: libro,
+                titulo: titulo,
+                articulo_numero: articulo_numero,
+                articulo_titulo_completo: articulo_titulo_completo,
+                autor: null,
+                fuente: 'BCN'
+            };
+        });
+
+        // Inserción por lotes
+        const TAMAÑO_LOTE = 200;
+        let lotesExitosos = 0;
+        for (let i = 0; i < registros.length; i += TAMAÑO_LOTE) {
+            const lote = registros.slice(i, i + TAMAÑO_LOTE);
+            const { error: insertError } = await supabase
+                .from('fragmentos_legales')
+                .insert(lote);
+            if (insertError) throw new Error(`Fallo en lote: ${insertError.message}`);
+            lotesExitosos++;
+            console.log(`   ✅ Lote ${lotesExitosos} (${Math.min(i+TAMAÑO_LOTE, registros.length)} artículos)`);
+        }
+
+        console.log(`\n🏆 ¡INGESTIÓN COMPLETA! ${registros.length} artículos insertados.`);
+    } catch (error) {
+        console.error("\n❌ ERROR CRÍTICO:", error.message);
+    }
+}
+
+ejecutarIngestion();
+
+
+// ==========================================
+// 📁 ARCHIVO: ingestor_doctrina.js
+// ==========================================
+
+// ALUCILEX - Ingestión de Doctrina con columnas separadas
+require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+    console.error("❌ Error Crítico: Faltan credenciales de Supabase");
+    process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+const ARCHIVO_ORIGEN = path.join(__dirname, 'data', 'apuntes_procesados.json');
+
+async function subirBaseDeDatos() {
+    console.log("🚀 Iniciando ingesta de doctrina...");
+
+    if (!fs.existsSync(ARCHIVO_ORIGEN)) {
+        console.error("❌ No se encuentra apuntes_procesados.json. Ejecuta procesador_pdf.js");
+        return;
+    }
+
+    const rawData = fs.readFileSync(ARCHIVO_ORIGEN, 'utf8');
+    const fragmentos = JSON.parse(rawData);
+    console.log(`📦 ${fragmentos.length} fragmentos encontrados.`);
+
+    // Eliminar doctrina anterior (opcional, comenta si quieres conservar)
+    const { error: deleteError } = await supabase
+        .from('fragmentos_legales')
+        .delete()
+        .eq('tipo', 'doctrina');
+    if (deleteError) console.warn("⚠️ No se pudo purgar doctrina anterior:", deleteError.message);
+    else console.log("🧹 Doctrina anterior eliminada.");
+
+    const registros = fragmentos.map(frag => ({
+        contenido: frag.contenido,
+        tipo: 'doctrina',
+        libro: null,
+        titulo: null,
+        articulo_numero: null,
+        articulo_titulo_completo: frag.titulo,
+        autor: frag.autor || 'Juan Andrés Orrego',
+        fuente: 'apuntes_pdf'
+    }));
+
+    const TAMAÑO_LOTE = 200;
+    let lotesExitosos = 0;
+    for (let i = 0; i < registros.length; i += TAMAÑO_LOTE) {
+        const lote = registros.slice(i, i + TAMAÑO_LOTE);
+        const { error } = await supabase.from('fragmentos_legales').insert(lote);
+        if (error) console.error(`❌ Error en lote ${lotesExitosos+1}:`, error.message);
+        else lotesExitosos++;
+        await new Promise(r => setTimeout(r, 200));
+    }
+
+    console.log(`\n🏆 ¡INGESTIÓN COMPLETA! ${registros.length} fragmentos doctrinales insertados.`);
+}
+
+subirBaseDeDatos();cls
+
+
+// ==========================================
+// 📁 ARCHIVO: probar_geminis.js
+// ==========================================
+
+// listar_modelos_gratuitos_corregido.js
+require('dotenv').config();
+const axios = require('axios');
+
+async function listarModelosGratuitos() {
+    console.log("\n🔍 CONSULTANDO MODELOS GRATUITOS EN OPENROUTER\n");
+    console.log("⏳ Cargando lista desde la API...\n");
+    
+    try {
+        const response = await axios.get('https://openrouter.ai/api/v1/models');
+        const todosLosModelos = response.data.data;
+        
+        // 🔧 FILTRO CORREGIDO: considera gratis si precio es menor a 0.000001
+        const modelosGratuitos = todosLosModelos.filter(modelo => {
+            const precioPrompt = modelo.pricing?.prompt || 1;
+            const precioCompletion = modelo.pricing?.completion || 1;
+            // Es gratis si cuesta menos de 0.000001 (prácticamente 0)
+            return precioPrompt < 0.000001 && precioCompletion < 0.000001;
+        });
+        
+        // También incluir modelos que tienen ":free" en el ID
+        const modelosFreeTag = todosLosModelos.filter(modelo => 
+            modelo.id.includes(':free')
+        );
+        
+        // Combinar y eliminar duplicados
+        const todosGratuitos = [...new Map(
+            [...modelosGratuitos, ...modelosFreeTag].map(m => [m.id, m])
+        ).values()];
+        
+        console.log(`✅ TOTAL DE MODELOS EN OPENROUTER: ${todosLosModelos.length}`);
+        console.log(`🎁 MODELOS GRATUITOS ENCONTRADOS: ${todosGratuitos.length}\n`);
+        console.log("=".repeat(70));
+        
+        if (todosGratuitos.length === 0) {
+            console.log("⚠️ No se encontraron modelos gratuitos con el filtro actual.");
+            console.log("💡 Mostrando primeros 10 modelos con sus precios:\n");
+            
+            todosLosModelos.slice(0, 10).forEach(m => {
+                console.log(`📌 ${m.id}`);
+                console.log(`   💰 Precio input: $${m.pricing?.prompt}, output: $${m.pricing?.completion}`);
+                console.log("");
+            });
+            return;
+        }
+        
+        // Mostrar modelos gratuitos
+        todosGratuitos.forEach((modelo, index) => {
+            console.log(`${index + 1}. ${modelo.id}`);
+            console.log(`   📝 Nombre: ${modelo.name}`);
+            console.log(`   📊 Contexto: ${(modelo.context_length || 0).toLocaleString()} tokens`);
+            if (modelo.description) {
+                console.log(`   📖 Descripción: ${modelo.description.substring(0, 80)}...`);
+            }
+            console.log("");
+        });
+        
+        console.log("=".repeat(70));
+        console.log("\n💡 RECOMENDACIÓN PRINCIPAL:");
+        console.log('   const MODELO_IA = "openrouter/free";  // Router automático');
+        console.log("\n💡 O si prefieres un modelo específico, usa:");
+        if (todosGratuitos[0]) {
+            console.log(`   const MODELO_IA = "${todosGratuitos[0].id}";`);
+        }
+        
+        return todosGratuitos;
+        
+    } catch (error) {
+        console.error("❌ Error al consultar modelos:", error.message);
+        console.log("\n🔧 Alternativa: Visita https://openrouter.ai/models");
+        console.log("   Busca modelos con el ícono 🆓");
+    }
+}
+
+// Ejecutar
+listarModelosGratuitos();
+
+
+// ==========================================
+// 📁 ARCHIVO: probar_modelos.js
+// ==========================================
+
+// prueba_simple.js
+require('dotenv').config();
+const axios = require('axios');
+
+async function test() {
+    console.log("Probando modelo...");
+    
+    try {
+        const response = await axios.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            {
+                model: "meta-llama/llama-3.2-3b-instruct:free",
+                messages: [{ role: "user", content: "¿Qué es la ley? Responde breve." }],
+                max_tokens: 100
+            },
+            {
+                headers: {
+                    "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+        
+        console.log("✅ ÉXITO!");
+        console.log("Respuesta:", response.data.choices[0].message.content);
+        
+    } catch (error) {
+        console.log("❌ Error:", error.response?.status);
+        console.log("Detalle:", error.response?.data?.error || error.message);
+    }
+}
+
+test();
+
+
+// ==========================================
+// 📁 ARCHIVO: procesador_pdf.js
+// ==========================================
+
+// ALUCILEX - Procesador y Fragmentador de PDFs (Motor Nativo pdfreader)
+// Ubicación: C:\Alucilex\procesador_pdf.js
+
+const fs = require('fs');
+const path = require('path');
+const { PdfReader } = require('pdfreader');
+
+const CARPETA_ORIGEN = path.join(__dirname, 'data', 'apuntes_pdf');
+const ARCHIVO_DESTINO = path.join(__dirname, 'data', 'apuntes_procesados.json');
+
+function limpiarTexto(texto) {
+    if (!texto) return "";
+    return texto.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function fragmentarTexto(texto, maxCaracteres = 1500) {
+    const fragmentos = [];
+    const oraciones = texto.match(/[^.!?]+[.!?]+/g) || [texto];
+    let bloqueActual = "";
+
+    for (let oracion of oraciones) {
+        if ((bloqueActual.length + oracion.length) > maxCaracteres) {
+            if (bloqueActual.trim().length > 10) fragmentos.push(bloqueActual.trim());
+            bloqueActual = oracion;
+        } else {
+            bloqueActual += " " + oracion;
+        }
+    }
+    if (bloqueActual.trim().length > 10) fragmentos.push(bloqueActual.trim());
+    return fragmentos;
+}
+
+// Función Promisificada para leer el PDF con el motor puro de Node
+function extraerTextoPdfReader(rutaArchivo) {
+    return new Promise((resolve, reject) => {
+        let textoCompleto = "";
+        new PdfReader().parseFileItems(rutaArchivo, (err, item) => {
+            if (err) {
+                reject(err);
+            } else if (!item) {
+                // Si el item es null, significa que llegamos al final del archivo
+                resolve(textoCompleto);
+            } else if (item.text) {
+                // Acumulamos el texto que va encontrando
+                textoCompleto += item.text + " ";
+            }
+        });
+    });
+}
+
+async function procesarDocumentos() {
+    console.log("⚙️ Iniciando el Destilador Doctrinario (Motor Nativo Node.js)...");
+
+    if (!fs.existsSync(CARPETA_ORIGEN)) {
+        console.error("❌ Error: No existe la carpeta 'data/apuntes_pdf'.");
+        return;
+    }
+
+    const archivos = fs.readdirSync(CARPETA_ORIGEN).filter(file => file.endsWith('.pdf'));
+    
+    if (archivos.length === 0) {
+        console.log("⚠️ No se encontraron PDFs en la carpeta para procesar.");
+        return;
+    }
+
+    const todosLosFragmentos = [];
+
+    // Procesamos secuencialmente para no saturar la RAM
+    for (let i = 0; i < archivos.length; i++) {
+        const nombreArchivo = archivos[i];
+        const rutaCompleta = path.join(CARPETA_ORIGEN, nombreArchivo);
+        
+        console.log(`📄 [${i + 1}/${archivos.length}] Escaneando: ${nombreArchivo}...`);
+
+        try {
+            const textoCrudo = await extraerTextoPdfReader(rutaCompleta);
+            const textoLimpio = limpiarTexto(textoCrudo);
+            
+            // Escudo: Si el PDF son puras imágenes escaneadas, lo saltamos
+            if (!textoLimpio || textoLimpio.length < 50) {
+                console.log(`   ⚠️ Advertencia: ${nombreArchivo} parece estar vacío o es un escáner de imágenes protegido.`);
+                continue; 
+            }
+
+            const fragmentosArchivo = fragmentarTexto(textoLimpio);
+
+            fragmentosArchivo.forEach((frag, index) => {
+                todosLosFragmentos.push({
+                    titulo: `Apunte: ${nombreArchivo.replace('.pdf', '')} - Parte ${index + 1}`,
+                    contenido: frag,
+                    autor: "Juan Andrés Orrego"
+                });
+            });
+
+        } catch (error) {
+            console.error(`   ❌ Error al leer ${nombreArchivo}:`, error.message);
+        }
+    }
+
+    fs.writeFileSync(ARCHIVO_DESTINO, JSON.stringify(todosLosFragmentos, null, 2));
+    console.log(`\n==========================================`);
+    console.log(`🏆 ¡DESTILACIÓN COMPLETA!`);
+    console.log(`Se generaron ${todosLosFragmentos.length} fragmentos inteligentes de doctrina.`);
+    console.log(`==========================================\n`);
+}
+
+procesarDocumentos();
+
+
+// ==========================================
+// 📁 ARCHIVO: prueba_minima.js
+// ==========================================
+
+// prueba_minima.js
+require('dotenv').config();
+const axios = require('axios');
+
+async function test() {
+    console.log("🧪 Probando conexión mínima...");
+    
+    try {
+        const response = await axios.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            {
+                model: "meta-llama/llama-3.3-70b-instruct:free",
+                messages: [{ role: "user", content: "Hola, responde solo: Funciona" }],
+                max_tokens: 20
+            },
+            {
+                headers: {
+                    "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+        
+        console.log("✅ ÉXITO! Respuesta:", response.data.choices[0].message.content);
+    } catch (error) {
+        console.log("❌ Error:", error.response?.status, error.response?.data);
+    }
+}
+
+test();
+
+
+// ==========================================
+// 📁 ARCHIVO: revisar-limites.js
+// ==========================================
+
+// revisar-limites.js (VERSIÓN CORREGIDA)
+require('dotenv').config();
+const axios = require('axios');
+
+async function checkOpenRouterStatus() {
+    const API_KEY = process.env.OPENROUTER_API_KEY;
+    
+    // VERIFICAR QUE LA API KEY EXISTE
+    if (!API_KEY) {
+        console.error("❌ ERROR: No se encontró OPENROUTER_API_KEY en el archivo .env");
+        console.log("\n📝 Tu archivo .env debe contener:");
+        console.log("   OPENROUTER_API_KEY=sk-or-v1-tu-clave-aqui");
+        console.log("\n🔑 ¿No tienes clave? Obtén una en: https://openrouter.ai/keys");
+        return;
+    }
+    
+    console.log(`✅ API key encontrada: ${API_KEY.substring(0, 15)}...`);
+    
+    try {
+        const response = await axios.get('https://openrouter.ai/api/v1/auth/key', {
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        console.log("\n📊 ESTADO DE TU API KEY EN OPENROUTER:");
+        console.log(`   - Créditos restantes: $${response.data.credits || 0}`);
+        console.log(`   - Límite diario: ${response.data.limit || 50} requests`);
+        console.log(`   - Usados hoy: ${response.data.usage || 0} requests`);
+        console.log(`   - Plan: ${response.data.plan || 'Free'}`);
+        
+        if (response.data.credits === 0 || response.data.credits < 0.01) {
+            console.log("\n⚠️ ALERTA: No tienes créditos disponibles");
+            console.log("   Los modelos gratuitos tienen límite de 50 requests/día");
+            console.log("   Solución: Espera a mañana o compra créditos en https://openrouter.ai/credits");
+        }
+        
+    } catch (error) {
+        console.error("\n❌ ERROR AL VERIFICAR:");
+        
+        if (error.response) {
+            console.error(`   Status: ${error.response.status}`);
+            console.error(`   Mensaje: ${error.response.data?.error || error.response.statusText}`);
+            
+            if (error.response.status === 401) {
+                console.error("\n🔑 API KEY INVÁLIDA:");
+                console.error("   La clave no es válida o ha expirado");
+                console.error("   Genera una nueva en: https://openrouter.ai/keys");
+            } else if (error.response.status === 404) {
+                console.error("\n🔍 Endpoint no encontrado. Probando con otro endpoint...");
+                await probarEndpointAlternativo(API_KEY);
+            }
+        } else {
+            console.error(`   Error: ${error.message}`);
+        }
+    }
+}
+
+async function probarEndpointAlternativo(API_KEY) {
+    try {
+        // Intentar con un chat simple para ver si la clave funciona
+        console.log("\n🔄 Probando la API key con un mensaje simple...");
+        
+        const response = await axios.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            {
+                model: 'meta-llama/llama-3.3-70b-instruct:free',
+                messages: [
+                    {
+                        role: 'user',
+                        content: 'Responde solo con: "OK"'
+                    }
+                ],
+                max_tokens: 10
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+        
+        console.log("✅ La API key FUNCIONA correctamente");
+        console.log("   El problema es el modelo o el prompt, no los límites");
+        
+    } catch (error) {
+        if (error.response?.status === 401) {
+            console.log("❌ La API key NO ES VÁLIDA");
+        } else if (error.response?.status === 429) {
+            console.log("⚠️ LÍMITE EXCEDIDO: Has alcanzado el límite diario de 50 requests");
+            console.log("   Solución: Espera 24 horas o compra créditos");
+        } else {
+            console.log(`❌ Error: ${error.response?.status || error.message}`);
+        }
+    }
+}
+
+// EJECUTAR
+checkOpenRouterStatus();
+
+
+// ==========================================
+// 📁 ARCHIVO: robot_bcn.js
+// ==========================================
+
+// ALUCILEX - Robot de Extracción BCN Definitivo (v4 - Jerárquico)
+// Ubicación: C:\Alucilex\robot_bcn.js
+
+const axios = require('axios');
+const xml2js = require('xml2js');
+const fs = require('fs');
+
+// ID CORRECTO del Código Civil en la BCN: 172986
+const ID_NORMA = '172986'; 
+const URL_BCN = `https://www.leychile.cl/Consulta/obtxml?opt=7&idNorma=${ID_NORMA}`;
+
+/**
+ * Función para limpiar caracteres corruptos y basura HTML de la BCN
+ */
+function decodificarTexto(texto) {
+    if (!texto) return "";
+    let limpio = texto.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec));
+    limpio = limpio.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
+    limpio = limpio.replace(/<\/?[^>]+(>|$)/g, "");
+    return limpio.replace(/\s+/g, ' ').trim();
+}
+
+async function ejecutarRobot() {
+    console.log("🤖 Alucilex Robot v4: Descargando Código Civil Oficial con Jerarquía...");
+
+    try {
+        const response = await axios.get(URL_BCN);
+        const parser = new xml2js.Parser();
+        
+        parser.parseString(response.data, (err, result) => {
+            if (err) throw err;
+
+            if (!result || !result.Norma) {
+                throw new Error("El XML se descargó, pero la BCN no entregó el formato esperado (<Norma>).");
+            }
+
+            const leyesParaJson = [];
+            console.log("📝 Ejecutando Radar Jerárquico: Escaneando Libros, Títulos y Artículos...");
+
+            // El Radar Recursivo Modificado (Ahora con Memoria de Contexto)
+            function extraerArticulosRecursivo(obj, contextoActual) {
+                if (!obj) return;
+
+                // 1. Heredamos la memoria de la capa superior para esta rama del árbol
+                let contextoLocal = {
+                    libro: contextoActual.libro,
+                    tituloJerarquico: contextoActual.tituloJerarquico
+                };
+
+                // 2. Detección de Jerarquía (Libros y Títulos)
+                if (obj.$) {
+                    const tipoParte = obj.$.tipoParte ? obj.$.tipoParte.toLowerCase() : "";
+                    const designacion = obj.$.designacion ? decodificarTexto(obj.$.designacion) : "";
+
+                    let nombreSeccion = "";
+                    // A veces el título real de la materia está en la etiqueta Texto
+                    if (obj.Texto && obj.Texto[0]) {
+                        const textoNodo = typeof obj.Texto[0] === 'string' ? obj.Texto[0] : (obj.Texto[0]._ || "");
+                        nombreSeccion = decodificarTexto(textoNodo);
+                    }
+
+                    // Actualizamos la memoria si encontramos un Libro o un Título
+                    if (tipoParte === 'libro' || tipoParte === 'titulo preliminar') {
+                        contextoLocal.libro = designacion + (nombreSeccion.length < 100 && nombreSeccion ? " - " + nombreSeccion : "");
+                    } else if (tipoParte === 'título' || tipoParte === 'titulo') {
+                        contextoLocal.tituloJerarquico = designacion + (nombreSeccion.length < 100 && nombreSeccion ? " - " + nombreSeccion : "");
+                    }
+                }
+
+                // 3. Detección de Artículos
+                let esArticulo = false;
+                let tituloOficial = "Sin Título";
+
+                if (obj.$ && obj.Texto) {
+                    const designacion = obj.$.designacion ? obj.$.designacion.toLowerCase() : "";
+                    const tipoParte = obj.$.tipoParte ? obj.$.tipoParte.toLowerCase() : "";
+                    const idParte = obj.$.idParte ? obj.$.idParte.toLowerCase() : "";
+
+                    if (designacion.includes("art") || tipoParte.includes("art") || idParte.includes("art")) {
+                        esArticulo = true;
+                        tituloOficial = obj.$.designacion || obj.$.tipoParte || obj.$.idParte;
+                    }
+                }
+
+                // 4. Inyección de Contexto al Artículo
+                if (esArticulo && obj.Texto) {
+                    let contenidoPrincipal = "";
+                    if (typeof obj.Texto[0] === 'string') {
+                        contenidoPrincipal = obj.Texto[0];
+                    } else if (obj.Texto[0] && obj.Texto[0]._) {
+                        contenidoPrincipal = obj.Texto[0]._;
+                    } else {
+                        contenidoPrincipal = JSON.stringify(obj.Texto[0]);
+                    }
+                    
+                    let notasAdicionales = "";
+                    if (obj.Notas && obj.Notas[0]) {
+                        let textoNota = typeof obj.Notas[0] === 'string' ? obj.Notas[0] : JSON.stringify(obj.Notas[0]);
+                        notasAdicionales = `\n\n[NOTA BCN]: ${textoNota}`;
+                    }
+
+                    let contenidoFinal = decodificarTexto(contenidoPrincipal + notasAdicionales);
+
+                    if (contenidoFinal.length > 5) {
+                        let tituloReal = decodificarTexto(tituloOficial);
+                        
+                        // Extraemos el número exacto
+                        const matchNumero = contenidoFinal.match(/^(?:Art[íi]culo|Art\.)\s*\d+[a-zA-Zº°]*/i);
+                        if (matchNumero) {
+                            tituloReal = matchNumero[0];
+                        }
+
+                        // LA MAGIA: Construimos la genealogía completa para el metadato
+                        let genealogia = "";
+                        if (contextoLocal.libro) genealogia += `[${contextoLocal.libro}] `;
+                        if (contextoLocal.tituloJerarquico) genealogia += `[${contextoLocal.tituloJerarquico}] `;
+
+                        leyesParaJson.push({
+                            // El título ahora será: "[Libro IV] [Título XXIX - Del Comodato] Art. 2174"
+                            titulo: `${genealogia}${tituloReal}`.trim(),
+                            contenido: contenidoFinal
+                        });
+                    }
+                }
+
+                // Recursividad: transmitiendo la memoria local a los hijos
+                if (Array.isArray(obj)) {
+                    for (let item of obj) {
+                        extraerArticulosRecursivo(item, contextoLocal);
+                    }
+                } else if (typeof obj === 'object') {
+                    for (let key in obj) {
+                        extraerArticulosRecursivo(obj[key], contextoLocal);
+                    }
+                }
+            }
+
+            // Encendemos el radar desde la raíz, con la memoria en blanco inicial
+            extraerArticulosRecursivo(result.Norma, { libro: "", tituloJerarquico: "" });
+
+            if (leyesParaJson.length === 0) {
+                throw new Error("No se encontró ningún artículo. La estructura de la BCN es ilegible.");
+            }
+
+            // Guardamos el JSON enriquecido
+            fs.writeFileSync('./data/leyes.json', JSON.stringify(leyesParaJson, null, 2));
+            console.log(`\n==========================================`);
+            console.log(`🏆 ¡EXTRACCIÓN JERÁRQUICA COMPLETA!`);
+            console.log(`Se extrajeron y mapearon ${leyesParaJson.length} artículos con su genealogía.`);
+            console.log(`📁 Revisa el archivo data/leyes.json para confirmar los títulos.`);
+            console.log(`==========================================\n`);
+        });
+
+    } catch (error) {
+        console.error("❌ El Robot falló:", error.message);
+    }
+}
+
+ejecutarRobot();
+
+
+// ==========================================
+// 📁 ARCHIVO: robot_orrego.js
+// ==========================================
+
+// ALUCILEX - Robot Recolector de Apuntes (Juan Andrés Orrego)
+// Ubicación: C:\Alucilex\robot_orrego.js
+
+const axios = require('axios');
+const cheerio = require('cheerio');
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
+
+// URL pública de donde extraeremos la doctrina
+const URL_ORREGO = 'https://www.juanandresorrego.cl/apuntes_all.html';
+const BASE_URL = 'https://www.juanandresorrego.cl/';
+const CARPETA_DESTINO = path.join(__dirname, 'data', 'apuntes_pdf');
+
+async function ejecutarDescarga() {
+    console.log("🤖 Iniciando Robot Orrego: Escaneando la web en busca de doctrina...");
+
+    try {
+        // Crear carpeta si no existe
+        if (!fs.existsSync(CARPETA_DESTINO)) {
+            fs.mkdirSync(CARPETA_DESTINO, { recursive: true });
+            console.log("📁 Carpeta 'data/apuntes_pdf' creada para recibir los archivos.");
+        }
+
+        const { data: html } = await axios.get(URL_ORREGO);
+        const $ = cheerio.load(html);
+        const enlacesPdf = [];
+
+        // Buscamos todos los enlaces .pdf en la página
+        $('a').each((i, el) => {
+            let href = $(el).attr('href');
+            if (href && href.toLowerCase().includes('.pdf')) {
+                if (!href.startsWith('http')) {
+                    href = href.startsWith('/') ? BASE_URL + href.substring(1) : BASE_URL + href;
+                }
+                const nombre = path.basename(decodeURIComponent(href));
+                if (!enlacesPdf.find(e => e.url === href)) {
+                    enlacesPdf.push({ url: href, nombre });
+                }
+            }
+        });
+
+        console.log(`\n📚 Se detectaron ${enlacesPdf.length} documentos. Iniciando descarga...`);
+
+        for (let i = 0; i < enlacesPdf.length; i++) {
+            const pdf = enlacesPdf[i];
+            const ruta = path.join(CARPETA_DESTINO, pdf.nombre);
+
+            if (fs.existsSync(ruta)) {
+                console.log(`⏩ [${i+1}/${enlacesPdf.length}] Ya descargado: ${pdf.nombre}`);
+                continue;
+            }
+
+            console.log(`⬇️ [${i+1}/${enlacesPdf.length}] Bajando: ${pdf.nombre}`);
+            
+            try {
+                const agent = new https.Agent({ rejectUnauthorized: false });
+                const res = await axios({ method: 'GET', url: pdf.url, responseType: 'stream', httpsAgent: agent });
+                const writer = fs.createWriteStream(ruta);
+                res.data.pipe(writer);
+                await new Promise((resolve, reject) => {
+                    writer.on('finish', resolve);
+                    writer.on('error', reject);
+                });
+            } catch (e) {
+                console.error(`❌ Error en ${pdf.nombre}:`, e.message);
+            }
+        }
+
+        console.log("\n🏆 ¡Misión cumplida! Los archivos están en tu carpeta local.");
+
+    } catch (error) {
+        console.error("❌ El robot falló al conectar:", error.message);
+    }
+}
+
+ejecutarDescarga();
+
