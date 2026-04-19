@@ -1,4 +1,4 @@
-// server.js - Motor Alucilex DEFINITIVO (Cero Alucinaciones / Cero Negativas)
+// server.js - Motor Alucilex DEFINITIVO (Blindaje Anti-Crash)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -15,40 +15,54 @@ const openai = new OpenAI({
     baseURL: 'https://openrouter.ai/api/v1' 
 });
 
-async function generarEmbedding(texto) {
-    const response = await openai.embeddings.create({
-        model: 'text-embedding-3-small',
-        input: texto.substring(0, 8000)
-    });
-    return response.data[0].embedding;
-}
-
 app.post('/api/consultar', async (req, res) => {
     const { pregunta } = req.body;
     
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+    // 1. Evitamos que una pregunta vacía colapse el servidor
+    if (!pregunta) {
+        return res.status(400).json({ error: "La pregunta está vacía" });
+    }
 
+    // 2. Fijamos la respuesta como "Exitosa" (200) desde el inicio para evitar Errores 500
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+    });
+
+    let contextoLegal = "";
+
+    // BLOQUE A: Búsqueda Vectorial (AISLADA)
+    // Si esto falla (por OpenRouter o Supabase), el código sobrevive y pasa al Bloque B.
     try {
-        const embedding = await generarEmbedding(pregunta);
+        console.log("🔍 Generando Embedding para:", pregunta);
+        const embeddingResponse = await openai.embeddings.create({
+            model: 'openai/text-embedding-3-small', // PREFIJO CORREGIDO PARA OPENROUTER
+            input: pregunta.substring(0, 8000)
+        });
+        const embedding = embeddingResponse.data[0].embedding;
 
-        // Búsqueda extra-amplia. Si falla o trae basura, la IA lo ignorará.
+        console.log("📚 Buscando en Supabase...");
         const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
             query_embedding: embedding,
             match_threshold: 0.01, 
             match_count: 10
         });
 
-        if (error) {
-            console.error("Error en Supabase:", error);
-            // No detenemos el servidor si la base de datos falla, dejamos que la IA responda
+        if (error) throw error;
+
+        if (fragmentos && fragmentos.length > 0) {
+            contextoLegal = fragmentos.map(f => `[DOCUMENTO]: ${f.contenido}`).join('\n\n');
+            console.log("✅ Contexto legal recuperado.");
         }
+    } catch (dbError) {
+        console.log("⚠️ Advertencia: Búsqueda fallida. Pasando a memoria absoluta de la IA. Motivo:", dbError.message);
+        // NO lanzamos el error. El servidor sigue vivo.
+    }
 
-        let contextoLegal = fragmentos && fragmentos.length > 0 
-            ? fragmentos.map(f => `[DOCUMENTO]: ${f.contenido}`).join('\n\n')
-            : "";
-
+    // BLOQUE B: Respuesta de la Inteligencia Artificial (INFALIBLE)
+    try {
+        console.log("🧠 Consultando a DeepSeek...");
         const stream = await openai.chat.completions.create({
             model: "deepseek/deepseek-chat",
             messages: [
@@ -74,13 +88,15 @@ app.post('/api/consultar', async (req, res) => {
         
         res.write('data: [DONE]\n\n');
         res.end();
+        console.log("✅ Respuesta completada.");
 
-    } catch (error) {
-        console.error("Error crítico en el servidor:", error);
-        res.write(`data: ${JSON.stringify({ content: "❌ Error de procesamiento. Por favor, intenta de nuevo." })}\n\n`);
+    } catch (aiError) {
+        console.error("❌ Error crítico en OpenRouter:", aiError);
+        res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error de conexión con el modelo de Inteligencia Artificial." })}\n\n`);
+        res.write('data: [DONE]\n\n');
         res.end();
     }
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Motor Alucilex Definitivo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Motor Alucilex Blindado en puerto ${PORT}`));
