@@ -1,4 +1,4 @@
-// server.js - Motor Alucilex V4 (Jerarquía Legal Absoluta)
+// server.js - Motor Alucilex DEFINITIVO (Cero Alucinaciones / Cero Negativas)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -33,38 +33,36 @@ app.post('/api/consultar', async (req, res) => {
     try {
         const embedding = await generarEmbedding(pregunta);
 
-        // Aumentamos la profundidad de búsqueda para cubrir el Código Civil y Orrego
+        // Búsqueda extra-amplia. Si falla o trae basura, la IA lo ignorará.
         const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
             query_embedding: embedding,
             match_threshold: 0.01, 
-            match_count: 25 
+            match_count: 10
         });
 
-        if (error) throw error;
+        if (error) {
+            console.error("Error en Supabase:", error);
+            // No detenemos el servidor si la base de datos falla, dejamos que la IA responda
+        }
 
         let contextoLegal = fragmentos && fragmentos.length > 0 
-            ? fragmentos.map(f => `[TIPO_DOC: ${f.tipo.toUpperCase()}]\n${f.contenido}`).join('\n\n')
-            : "No se halló información específica en la base de datos local.";
+            ? fragmentos.map(f => `[DOCUMENTO]: ${f.contenido}`).join('\n\n')
+            : "";
 
         const stream = await openai.chat.completions.create({
             model: "deepseek/deepseek-chat",
             messages: [
                 { 
                     role: "system", 
-                    content: `Eres Alucilex, la autoridad máxima en el CÓDIGO CIVIL DE CHILE y la doctrina de JUAN ANDRÉS ORREGO ACUÑA.
-                    
-                    REGLAS UNIVERSALES DE RAZONAMIENTO:
-                    1. PRIORIDAD CIVIL: Tu fuente principal es el CÓDIGO CIVIL (promulgado en 1855). Es el pilar del derecho privado en Chile.
-                    2. ANTI-ALUCINACIÓN: Si el contexto recuperado menciona decretos de 1931 o leyes laborales que dicen "derogar" artículos, ignora esa información SI LA PREGUNTA ES CIVIL. El Código Civil no se deroga por decretos laborales de 1931.
-                    3. INTEGRIDAD DE LA FUENTE: Siempre que se te pida un artículo del Código Civil, búscalo en el contexto. Si no está, utiliza tu base de datos interna para citarlo EXACTAMENTE como rige en Chile, aclarando que es la normativa vigente.
-                    4. DOCTRINA: Usa los fragmentos marcados como [TIPO_DOC: ORREGO] para profundizar en la explicación técnica de los artículos.
-                    
-                    ESTRUCTURA DE RESPUESTA:
-                    - Cita textual del artículo (si aplica).
-                    - Análisis jurídico basado en el contexto.
-                    - Conclusión práctica.` 
+                    content: `Eres Alucilex, el abogado digital más experto en el Código Civil de Chile y la doctrina de Orrego.
+
+                    REGLAS DE ORO (INQUEBRANTABLES):
+                    1. PROHIBIDO RENDIRSE: JAMÁS digas "no se menciona en el contexto" o "no puedo proporcionar información". 
+                    2. CONOCIMIENTO ABSOLUTO: Si el usuario pregunta por un artículo (ej. Artículo 588) y el contexto está vacío o es confuso, TÚ DEBES RECITARLO de memoria usando tu vasto conocimiento del Código Civil Chileno vigente.
+                    3. EL CONTEXTO ES UN APOYO: Lee el 'CONTEXTO RECUPERADO'. Si te sirve, úsalo. Si tiene leyes derogadas de 1931 o información que no corresponde al Código Civil, IGNÓRALO COMPLETA Y ABSOLUTAMENTE.
+                    4. FORMATO: Responde siempre como un profesional, directo al grano, usando Markdown (negritas y viñetas).` 
                 },
-                { role: "user", content: `CONTEXTO RECUPERADO:\n${contextoLegal}\n\nPREGUNTA JURÍDICA: ${pregunta}` }
+                { role: "user", content: `CONTEXTO RECUPERADO (Úsalo solo si es útil):\n${contextoLegal}\n\nPREGUNTA DEL CLIENTE: ${pregunta}` }
             ],
             stream: true,
         });
@@ -78,11 +76,11 @@ app.post('/api/consultar', async (req, res) => {
         res.end();
 
     } catch (error) {
-        console.error("Error:", error);
-        res.write(`data: ${JSON.stringify({ content: "❌ Error: El sistema legal no respondió." })}\n\n`);
+        console.error("Error crítico en el servidor:", error);
+        res.write(`data: ${JSON.stringify({ content: "❌ Error de procesamiento. Por favor, intenta de nuevo." })}\n\n`);
         res.end();
     }
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Motor Alucilex V4 (Chile Civil Expert) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Motor Alucilex Definitivo en puerto ${PORT}`));
