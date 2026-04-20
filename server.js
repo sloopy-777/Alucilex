@@ -37,9 +37,10 @@ app.post('/api/consultar', async (req, res) => {
     try {
         console.log("🔍 Generando Embedding para:", pregunta);
         const embeddingResponse = await openai.embeddings.create({
-            model: 'openai/text-embedding-3-small', // PREFIJO CORREGIDO PARA OPENROUTER
-            input: pregunta.substring(0, 8000)
-        });
+    model: 'text-embedding-3-small',
+    input: pregunta.substring(0, 8000),
+    dimensions: 768
+});
         const embedding = embeddingResponse.data[0].embedding;
 
         console.log("📚 Buscando en Supabase...");
