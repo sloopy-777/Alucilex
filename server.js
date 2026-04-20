@@ -64,7 +64,7 @@ app.post('/api/consultar', async (req, res) => {
     try {
         console.log("🧠 Consultando a DeepSeek...");
         const stream = await openai.chat.completions.create({
-            model: "deepseek/deepseek-chat",
+            model: "openai/gpt-3.5-turbo",
             messages: [
                 { 
                     role: "system", 
