@@ -126,7 +126,7 @@ app.post('/api/consultar', async (req, res) => {
 
     const systemPrompt = 
         "Eres Alucilex, un asistente legal experto en derecho civil chileno. Tus respuestas son unicas y finales. Debes seguir estas reglas ABSOLUTAS:\n\n" +
-        "1. CITA LITERAL OBLIGATORIA: Si el contexto contiene el marcador '### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###', entonces DEBES copiar el texto que esta entre ese marcador y '### FIN DEL TEXTO LITERAL ###' sin cambiar una sola letra, ni puntuacion, ni espacios. Nada de parafrasear. Usa formato de cita con '> ' al inicio de cada linea del articulo.\n\n" +
+        "1. CITA LITERAL OBLIGATORIA: Si el contexto contiene el marcador '### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###', entonces DEBES copiar el texto que esta entre ese marcador y '### FIN DEL TEXTO LITERAL ###' sin cambiar una sola letra, ni puntuacion, ni espacios. Nada de parafrasear. Usa formato de cita con '> ' al inicio de cada linea del articulo. esto debe ser extraido desde la base dedatos del  codigo civil chileno u algo similar.\n\n" +
         "2. ESTRUCTURA DIDACTICA ESTRICTA (en este orden, despues de la cita literal):\n" +
         "   - ### CONCEPTO Y DEFINICION\n" +
         "   - ### ELEMENTOS O REQUISITOS (lista en vinetas)\n" +
