@@ -1,4 +1,4 @@
-// server.js - Instrucciones ultra precisas para la IA
+// server.js - Versión estable SIN errores de sintaxis
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -58,7 +58,6 @@ app.post('/api/consultar', async (req, res) => {
     let historial = conversaciones.get(sessionId);
     if (historial.length > MAX_HISTORIAL) historial = historial.slice(-MAX_HISTORIAL);
 
-    // 1. Búsqueda exacta por número de artículo
     let contextoLegal = "";
     let busquedaExitosa = false;
     const matchArt = pregunta.match(/\b(art[íi]culo|art\.)\s*(\d{1,4})\b/i);
@@ -80,7 +79,6 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // 2. Búsqueda semántica si no fue exacta
     if (!busquedaExitosa) {
         try {
             let embedding;
@@ -126,38 +124,28 @@ app.post('/api/consultar', async (req, res) => {
 
     if (!contextoLegal) contextoLegal = "No se encontraron fragmentos relevantes en la base de datos.";
 
-    // ========== INSTRUCCIONES PRECISAS PARA LA IA ==========
-    const systemPrompt = `Eres Alucilex, un asistente legal experto en derecho civil chileno. Tus respuestas son **únicas y finales**. Debes seguir estas reglas ABSOLUTAS:
-
-1. **CITA LITERAL OBLIGATORIA**: Si el contexto contiene el marcador "### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###", entonces DEBES copiar el texto que está entre ese marcador y "### FIN DEL TEXTO LITERAL ###" **sin cambiar una sola letra, ni puntuación, ni espacios**. Nada de parafrasear. Usa formato de cita con "> " al inicio de cada línea del artículo.
-
-2. **ESTRUCTURA DIDÁCTICA ESTRICTA** (en este orden, después de la cita literal):
-   - ### 📖 CONCEPTO Y DEFINICIÓN
-   - ### ⚙️ ELEMENTOS O REQUISITOS (lista en viñetas)
-   - ### 🧩 CARACTERÍSTICAS (lista en viñetas)
-   - ### 📊 CLASIFICACIONES (si aplica) – Si hay más de dos categorías, usa una **tabla de Markdown** para compararlas.
-   - ### 💡 EJEMPLOS (al menos dos ejemplos concretos y explicados)
-   - ### 🧠 CONCLUSIÓN (resumen breve de la importancia del concepto)
-
-3. **PROHIBICIONES ABSOLUTAS**:
-   - No inventes artículos, definiciones ni citas que no estén en el contexto.
-   - No parafrasees el texto literal del artículo.
-   - Si el contexto no contiene el artículo solicitado, responde exactamente: "No encontré el artículo [número] en mi base de datos."
-
-4. **FORMATO**: Usa Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).
-
-5. **IDIOMA**: Español.`;
+    const systemPrompt = 
+        "Eres Alucilex, un asistente legal experto en derecho civil chileno. Tus respuestas son unicas y finales. Debes seguir estas reglas ABSOLUTAS:\n\n" +
+        "1. CITA LITERAL OBLIGATORIA: Si el contexto contiene el marcador '### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###', entonces DEBES copiar el texto que esta entre ese marcador y '### FIN DEL TEXTO LITERAL ###' sin cambiar una sola letra, ni puntuacion, ni espacios. Nada de parafrasear. Usa formato de cita con '> ' al inicio de cada linea del articulo.\n\n" +
+        "2. ESTRUCTURA DIDACTICA ESTRICTA (en este orden, despues de la cita literal):\n" +
+        "   - ### CONCEPTO Y DEFINICION\n" +
+        "   - ### ELEMENTOS O REQUISITOS (lista en vinetas)\n" +
+        "   - ### CARACTERISTICAS (lista en vinetas)\n" +
+        "   - ### CLASIFICACIONES (si aplica) – Si hay mas de dos categorias, usa una tabla de Markdown para compararlas.\n" +
+        "   - ### EJEMPLOS (al menos dos ejemplos concretos y explicados)\n" +
+        "   - ### CONCLUSION (resumen breve de la importancia del concepto)\n\n" +
+        "3. PROHIBICIONES ABSOLUTAS:\n" +
+        "   - No inventes articulos, definiciones ni citas que no esten en el contexto.\n" +
+        "   - No parafrasees el texto literal del articulo.\n" +
+        "   - Si el contexto no contiene el articulo solicitado, responde exactamente: 'No encontre el articulo [numero] en mi base de datos.'\n\n" +
+        "4. FORMATO: Usa Markdown (negritas, vinetas, tablas). La respuesta debe ser extensa (minimo 800 palabras).\n\n" +
+        "5. IDIOMA: Espanol.";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
     mensajes.push({
         role: "user",
-        content: `**INSTRUCCIÓN SUPREMA**: Tu respuesta debe basarse **EXCLUSIVAMENTE** en el siguiente contexto. Copia el texto literal del artículo si está marcado. Aplica la estructura didáctica completa (concepto, elementos, características, clasificaciones, ejemplos, conclusión). No inventes ni parafrasees el artículo.
-
-CONTEXTO LEGAL:
-${contextoLegal}
-
-PREGUNTA DEL USUARIO: ${pregunta}`
+        content: "**INSTRUCCION SUPREMA**: Tu respuesta debe basarse EXCLUSIVAMENTE en el siguiente contexto. Copia el texto literal del articulo si esta marcado. Aplica la estructura didactica completa (concepto, elementos, caracteristicas, clasificaciones, ejemplos, conclusion). No inventes ni parafrasees el articulo.\n\nCONTEXTO LEGAL:\n" + contextoLegal + "\n\nPREGUNTA DEL USUARIO: " + pregunta
     });
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
@@ -165,9 +153,9 @@ PREGUNTA DEL USUARIO: ${pregunta}`
     try {
         console.log("🧠 Consultando a DeepSeek...");
         const stream = await openai.chat.completions.create({
-            model: "deepseek/deepseek-chat",  // puedes cambiarlo a "openai/gpt-3.5-turbo" si persisten los problemas
+            model: "deepseek/deepseek-chat",
             messages: mensajes,
-            temperature: 0.0,   // cero creatividad, máxima fidelidad al contexto
+            temperature: 0.0,
             max_tokens: 3500,
             stream: true,
         });
@@ -197,4 +185,4 @@ PREGUNTA DEL USUARIO: ${pregunta}`
 app.get('/ping', (req, res) => res.status(200).send('OK'));
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX (instrucciones ultra precisas) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor ALUCILEX (instrucciones ultra precisas) en puerto ${PORT}`));
