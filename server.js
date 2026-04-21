@@ -1,4 +1,4 @@
-// server.js - Versión estable SIN errores de sintaxis
+// server.js - Optimizado para Gemini 2.0 Flash-Lite (y otros modelos)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -124,40 +124,39 @@ app.post('/api/consultar', async (req, res) => {
 
     if (!contextoLegal) contextoLegal = "No se encontraron fragmentos relevantes en la base de datos.";
 
+    // ========== SYSTEM PROMPT SIMPLIFICADO (para Gemini y otros) ==========
     const systemPrompt = 
-        "Eres Alucilex, un asistente legal experto en derecho civil chileno. Tus respuestas son unicas y finales. Debes seguir estas reglas ABSOLUTAS:\n\n" +
-        "1. CITA LITERAL OBLIGATORIA: Si el contexto contiene el marcador '### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###', entonces DEBES copiar el texto que esta entre ese marcador y '### FIN DEL TEXTO LITERAL ###' sin cambiar una sola letra, ni puntuacion, ni espacios. Nada de parafrasear. Usa formato de cita con '> ' al inicio de cada linea del articulo. esto debe ser extraido desde la base dedatos del  codigo civil chileno u algo similar.\n\n" +
-        "2. ESTRUCTURA DIDACTICA ESTRICTA (en este orden, despues de la cita literal):\n" +
-        "   - ### CONCEPTO Y DEFINICION\n" +
-        "   - ### ELEMENTOS O REQUISITOS (lista en vinetas)\n" +
-        "   - ### CARACTERISTICAS (lista en vinetas)\n" +
-        "   - ### CLASIFICACIONES (si aplica) – Si hay mas de dos categorias, usa una tabla de Markdown para compararlas.\n" +
-        "   - ### EJEMPLOS (al menos dos ejemplos concretos y explicados)\n" +
-        "   - ### CONCLUSION (resumen breve de la importancia del concepto)\n\n" +
-        "3. PROHIBICIONES ABSOLUTAS:\n" +
-        "   - No inventes articulos, definiciones ni citas que no esten en el contexto.\n" +
-        "   - No parafrasees el texto literal del articulo.\n" +
-        "   - Si el contexto no contiene el articulo solicitado, responde exactamente: 'No encontre el articulo [numero] en mi base de datos.'\n\n" +
-        "4. FORMATO: Usa Markdown (negritas, vinetas, tablas). La respuesta debe ser extensa (minimo 800 palabras).\n\n" +
-        "5. IDIOMA: Espanol.";
+        "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
+        "1. Si el contexto contiene el marcador '### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###', entonces debes copiar el texto que está entre ese marcador y '### FIN DEL TEXTO LITERAL ###' sin cambiar ni una letra, ni puntuación, ni espacios. Usa formato de cita con '> ' al inicio de cada línea.\n\n" +
+        "2. Después de la cita literal, desarrolla el concepto con esta estructura exacta:\n" +
+        "   - ### CONCEPTO Y DEFINICIÓN\n" +
+        "   - ### ELEMENTOS O REQUISITOS (lista en viñetas)\n" +
+        "   - ### CARACTERÍSTICAS (lista en viñetas)\n" +
+        "   - ### CLASIFICACIONES (si aplica, usa tabla de Markdown si hay más de dos categorías)\n" +
+        "   - ### EJEMPLOS (al menos dos ejemplos concretos)\n" +
+        "   - ### CONCLUSIÓN\n\n" +
+        "3. PROHIBIDO inventar artículos o citas que no estén en el contexto.\n" +
+        "4. Si el contexto no contiene el artículo solicitado, responde exactamente: 'No encontré el artículo [número] en mi base de datos.'\n" +
+        "5. Usa formato Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
+        "6. Responde siempre en español.";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
     mensajes.push({
         role: "user",
-        content: "**INSTRUCCION SUPREMA**: Tu respuesta debe basarse EXCLUSIVAMENTE en el siguiente contexto. Copia el texto literal del articulo si esta marcado. Aplica la estructura didactica completa (concepto, elementos, caracteristicas, clasificaciones, ejemplos, conclusion). No inventes ni parafrasees el articulo.\n\nCONTEXTO LEGAL:\n" + contextoLegal + "\n\nPREGUNTA DEL USUARIO: " + pregunta
+        content: "CONTEXTO LEGAL (ÚNICA FUENTE):\n" + contextoLegal + "\n\nINSTRUCCIÓN ESPECÍFICA: Si el contexto contiene '### TEXTO LITERAL...', copia ese texto exactamente. Luego desarrolla el tema con la estructura completa (concepto, elementos, características, clasificaciones, ejemplos, conclusión). No inventes.\n\nPREGUNTA DEL USUARIO: " + pregunta
     });
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
 
     try {
-        console.log("🧠 Consultando a DeepSeek...");
+        console.log("🧠 Consultando a Gemini 2.0 Flash-Lite...");
         const stream = await openai.chat.completions.create({
-            model: "google/gemini-2.0-flash-lite-001",
+            model: "google/gemini-2.0-flash-lite-001", // Puedes cambiar a otro modelo aquí
             messages: mensajes,
             temperature: 0.0,
             max_tokens: 3500,
-            stream: true,
+            stream: true,   // ✅ CORREGIDO (sin 'cls')
         });
 
         let respuestaCompleta = "";
@@ -185,4 +184,4 @@ app.post('/api/consultar', async (req, res) => {
 app.get('/ping', (req, res) => res.status(200).send('OK'));
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Servidor ALUCILEX (instrucciones ultra precisas) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor ALUCILEX (optimizado) en puerto ${PORT}`));
