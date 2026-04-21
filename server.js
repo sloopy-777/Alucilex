@@ -1,4 +1,4 @@
-// server.js - Motor Alucilex DEFINITIVO con prompt didáctico y derecho chileno exclusivo
+// server.js - Versión final con prompt didáctico y búsqueda corregida
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -17,9 +17,7 @@ const openai = new OpenAI({
 
 app.post('/api/consultar', async (req, res) => {
     const { pregunta } = req.body;
-    if (!pregunta) {
-        return res.status(400).json({ error: "La pregunta está vacía" });
-    }
+    if (!pregunta) return res.status(400).json({ error: "Pregunta vacía" });
 
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -29,21 +27,20 @@ app.post('/api/consultar', async (req, res) => {
 
     let contextoLegal = "";
 
-    // Búsqueda vectorial
     try {
-        console.log("🔍 Generando Embedding para:", pregunta);
+        console.log("🔍 Generando embedding para:", pregunta);
         const embeddingResponse = await openai.embeddings.create({
             model: 'text-embedding-3-small',
             input: pregunta.substring(0, 8000),
-            dimensions: 768
+            // dimensions: 1536  // ya es el valor por defecto, opcional
         });
         const embedding = embeddingResponse.data[0].embedding;
 
         console.log("📚 Buscando en Supabase...");
         const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
             query_embedding: embedding,
-            match_threshold: 0.20,
-            match_count: 12
+            match_threshold: 0.20,   // relevancia
+            match_count: 10
         });
 
         if (error) throw error;
@@ -54,53 +51,53 @@ app.post('/api/consultar', async (req, res) => {
                 const titulo = f.articulo_titulo_completo || f.articulo_numero || 'Fragmento';
                 return `[${tipo} - ${titulo}]\n${f.contenido}`;
             }).join('\n\n');
-            console.log("✅ Contexto legal recuperado (" + fragmentos.length + " fragmentos).");
+            console.log(`✅ Contexto legal recuperado (${fragmentos.length} fragmentos).`);
         } else {
             console.log("⚠️ No se encontraron fragmentos relevantes.");
         }
     } catch (dbError) {
-        console.log("⚠️ Advertencia: Búsqueda fallida. Motivo:", dbError.message);
-        // No fallamos, seguimos sin contexto.
+        console.log("⚠️ Búsqueda fallida. Motivo:", dbError.message);
+        // continuamos sin contexto
     }
 
-    // Prompt del sistema DIDÁCTICO y con restricción a derecho chileno
-    const systemPrompt = `Eres Alucilex, un tutor experto en derecho civil chileno. Tu misión es enseñar de forma clara, profunda y estructurada, usando exclusivamente el Código Civil chileno y la doctrina de Juan Andrés Orrego.
+    // Prompt del sistema DIDÁCTICO (exige respuesta larga y estructurada)
+    const systemPrompt = `Eres Alucilex, un tutor experto en derecho civil chileno. Responde de forma DIDÁCTICA, EXTENSA (mínimo 500 palabras) y ESTRUCTURADA.
 
-REGLAS ESTRICTAS:
-1. RESPUESTA EXTENSA: Desarrolla el tema con al menos 500 palabras (a menos que la pregunta sea muy concreta tipo "¿qué dice el artículo X?").
-2. ESTRUCTURA DIDÁCTICA OBLIGATORIA:
-   - Si la pregunta se refiere a un concepto legal, comienza citando el artículo del Código Civil correspondiente (transcripción literal).
-   - Luego explica el concepto (definición, elementos, naturaleza jurídica).
-   - A continuación, desarrolla los requisitos, características, clasificaciones o efectos según corresponda.
-   - Usa viñetas, negritas y subtítulos (Markdown) para facilitar la lectura.
-   - Incluye ejemplos si los fragmentos los contienen.
-3. EXCLUSIVIDAD CHILENA: Responde ÚNICAMENTE con base en derecho chileno. Si el usuario pide comparar con otro ordenamiento (ej. "¿y en Argentina?"), responde: "Lo que me preguntas corresponde a derecho extranjero. ¿Quieres que te explique solo el derecho chileno?" A menos que el usuario diga explícitamente "sal de Chile" o "compáralo con derecho argentino", no salgas del marco chileno.
-4. USO DEL CONTEXTO: El CONTEXTO RECUPERADO contiene fragmentos reales de la ley y doctrina. Úsalo prioritariamente. Si el contexto es insuficiente, complementa con tu conocimiento jurídico chileno (pero nunca inventes artículos). Si no encuentras el artículo exacto, indícalo.
-5. PROHIBIDO RESPONDER DE FORMA ESCUETA: Las respuestas de una sola línea están prohibidas. Explicate como un profesor.
+REGLAS OBLIGATORIAS:
+1. Si la pregunta se refiere a un concepto legal, primero cita el artículo del Código Civil (texto literal).
+2. Luego desarrolla el concepto: definición, elementos, requisitos, características, clasificaciones.
+3. Usa subtítulos (###), negritas, viñetas y ejemplos si los hay.
+4. Si el contexto legal está disponible, úsalo prioritariamente. Si no, complementa con tu conocimiento jurídico chileno.
+5. PROHIBIDO responder de forma escueta. Explicate como un profesor universitario.
 
-FORMATO DE RESPUESTA (ejemplo):
-### 📜 Código Civil - Artículo [Número]
-> Texto literal del artículo
+FORMATO OBLIGATORIO:
+### 📜 Código Civil - Artículo [número]
+> texto literal
 
-### 📖 Explicación doctrinal
-[Definición, elementos, naturaleza]
+### 📖 Definición y concepto
+...
 
-### ⚙️ Requisitos / Características
-- Requisito 1...
-- Requisito 2...
+### ⚙️ Elementos o requisitos
+...
 
-### 🧠 Ejemplos (si existen)
+### 🧩 Características
+...
+
+### 📚 Clasificaciones (si aplica)
+...
+
+### 💡 Ejemplo (si existe)
 ...`;
 
     try {
-        console.log("🧠 Consultando a DeepSeek (o modelo configurado)...");
+        console.log("🧠 Consultando a la IA...");
         const stream = await openai.chat.completions.create({
-            model: "meta-llama/llama-3.3-70b-instruct:free", // o "deepseek/deepseek-chat" si prefieres pago
+            model: "meta-llama/llama-3.3-70b-instruct:free", // o cámbialo por "deepseek/deepseek-chat" si quieres pago
             messages: [
                 { role: "system", content: systemPrompt },
-                { role: "user", content: `CONTEXTO LEGAL (priorízalo):\n${contextoLegal || "No se encontraron fragmentos específicos. Usa tu conocimiento jurídico chileno, pero sin inventar artículos."}\n\nPREGUNTA DEL USUARIO: ${pregunta}` }
+                { role: "user", content: `CONTEXTO LEGAL (prioriza esto):\n${contextoLegal || "No hay contexto específico. Usa tu conocimiento jurídico chileno."}\n\nPREGUNTA: ${pregunta}` }
             ],
-            temperature: 0.4,
+            temperature: 0.5,
             max_tokens: 2500,
             stream: true,
         });
@@ -114,11 +111,11 @@ FORMATO DE RESPUESTA (ejemplo):
         console.log("✅ Respuesta completada.");
     } catch (aiError) {
         console.error("❌ Error crítico en OpenRouter:", aiError);
-        res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error de conexión con el modelo de IA. Por favor, intenta más tarde." })}\n\n`);
+        res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error de conexión con la IA." })}\n\n`);
         res.write('data: [DONE]\n\n');
         res.end();
     }
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Motor Alucilex Blindado en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX en puerto ${PORT}`));
