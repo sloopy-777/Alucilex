@@ -1,4 +1,4 @@
-// server.js - Versión FINAL con cita literal + estructura didáctica completa
+// server.js - Instrucciones ultra precisas para la IA
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -58,6 +58,7 @@ app.post('/api/consultar', async (req, res) => {
     let historial = conversaciones.get(sessionId);
     if (historial.length > MAX_HISTORIAL) historial = historial.slice(-MAX_HISTORIAL);
 
+    // 1. Búsqueda exacta por número de artículo
     let contextoLegal = "";
     let busquedaExitosa = false;
     const matchArt = pregunta.match(/\b(art[íi]culo|art\.)\s*(\d{1,4})\b/i);
@@ -71,7 +72,7 @@ app.post('/api/consultar', async (req, res) => {
             .eq('articulo_numero', numeroArt)
             .limit(1);
         if (!error && data && data.length > 0) {
-            contextoLegal = `### TEXTO LITERAL ###\n${data[0].contenido}\n### FIN TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${data[0].articulo_numero}]`;
+            contextoLegal = `### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###\n${data[0].contenido}\n### FIN DEL TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${data[0].articulo_numero}]`;
             busquedaExitosa = true;
             console.log(`✅ Artículo ${numeroArt} encontrado directamente.`);
         } else {
@@ -79,6 +80,7 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
+    // 2. Búsqueda semántica si no fue exacta
     if (!busquedaExitosa) {
         try {
             let embedding;
@@ -124,23 +126,38 @@ app.post('/api/consultar', async (req, res) => {
 
     if (!contextoLegal) contextoLegal = "No se encontraron fragmentos relevantes en la base de datos.";
 
-    const systemPrompt = `Eres Alucilex, un tutor experto en derecho civil chileno. Tu respuesta debe seguir ESTRICTAMENTE esta estructura didáctica:
+    // ========== INSTRUCCIONES PRECISAS PARA LA IA ==========
+    const systemPrompt = `Eres Alucilex, un asistente legal experto en derecho civil chileno. Tus respuestas son **únicas y finales**. Debes seguir estas reglas ABSOLUTAS:
 
-1. CITA LITERAL: Si el contexto contiene "### TEXTO LITERAL ###", transcribe ese texto exactamente al inicio (usando formato de cita >). Si no, omite este paso.
-2. CONCEPTO Y DEFINICIÓN: Explica el significado del tema, basándote en la doctrina de Orrego.
-3. ELEMENTOS O REQUISITOS: Enumera en viñetas los componentes necesarios.
-4. CARACTERÍSTICAS: Enumera en viñetas los rasgos esenciales.
-5. CLASIFICACIONES (si aplica): Presenta los tipos o categorías. Si hay más de dos, usa una tabla de Markdown para comparar.
-6. EJEMPLOS: Incluye al menos dos ejemplos concretos y explicados.
-7. CONCLUSIÓN: Resumen breve de la importancia del concepto.
+1. **CITA LITERAL OBLIGATORIA**: Si el contexto contiene el marcador "### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###", entonces DEBES copiar el texto que está entre ese marcador y "### FIN DEL TEXTO LITERAL ###" **sin cambiar una sola letra, ni puntuación, ni espacios**. Nada de parafrasear. Usa formato de cita con "> " al inicio de cada línea del artículo.
 
-La respuesta debe ser EXTENSA (mínimo 800 palabras), usar formato Markdown (negritas, viñetas, tablas) y estar en español.`;
+2. **ESTRUCTURA DIDÁCTICA ESTRICTA** (en este orden, después de la cita literal):
+   - ### 📖 CONCEPTO Y DEFINICIÓN
+   - ### ⚙️ ELEMENTOS O REQUISITOS (lista en viñetas)
+   - ### 🧩 CARACTERÍSTICAS (lista en viñetas)
+   - ### 📊 CLASIFICACIONES (si aplica) – Si hay más de dos categorías, usa una **tabla de Markdown** para compararlas.
+   - ### 💡 EJEMPLOS (al menos dos ejemplos concretos y explicados)
+   - ### 🧠 CONCLUSIÓN (resumen breve de la importancia del concepto)
+
+3. **PROHIBICIONES ABSOLUTAS**:
+   - No inventes artículos, definiciones ni citas que no estén en el contexto.
+   - No parafrasees el texto literal del artículo.
+   - Si el contexto no contiene el artículo solicitado, responde exactamente: "No encontré el artículo [número] en mi base de datos."
+
+4. **FORMATO**: Usa Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).
+
+5. **IDIOMA**: Español.`;
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
     mensajes.push({
         role: "user",
-        content: `INSTRUCCIÓN ESPECÍFICA: Aplica la estructura didáctica completa (cita literal, concepto, elementos, características, clasificaciones (con tabla si corresponde), ejemplos, conclusión).\n\nCONTEXTO LEGAL:\n${contextoLegal}\n\nPREGUNTA: ${pregunta}`
+        content: `**INSTRUCCIÓN SUPREMA**: Tu respuesta debe basarse **EXCLUSIVAMENTE** en el siguiente contexto. Copia el texto literal del artículo si está marcado. Aplica la estructura didáctica completa (concepto, elementos, características, clasificaciones, ejemplos, conclusión). No inventes ni parafrasees el artículo.
+
+CONTEXTO LEGAL:
+${contextoLegal}
+
+PREGUNTA DEL USUARIO: ${pregunta}`
     });
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
@@ -148,9 +165,9 @@ La respuesta debe ser EXTENSA (mínimo 800 palabras), usar formato Markdown (neg
     try {
         console.log("🧠 Consultando a DeepSeek...");
         const stream = await openai.chat.completions.create({
-            model: "deepseek/deepseek-chat",
+            model: "deepseek/deepseek-chat",  // puedes cambiarlo a "openai/gpt-3.5-turbo" si persisten los problemas
             messages: mensajes,
-            temperature: 0.1,
+            temperature: 0.0,   // cero creatividad, máxima fidelidad al contexto
             max_tokens: 3500,
             stream: true,
         });
@@ -180,4 +197,4 @@ La respuesta debe ser EXTENSA (mínimo 800 palabras), usar formato Markdown (neg
 app.get('/ping', (req, res) => res.status(200).send('OK'));
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX (didáctico completo) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX (instrucciones ultra precisas) en puerto ${PORT}`));
