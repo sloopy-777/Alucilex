@@ -152,7 +152,7 @@ app.post('/api/consultar', async (req, res) => {
     try {
         console.log("🧠 Consultando a Gemini 2.0 Flash-Lite...");
         const stream = await openai.chat.completions.create({
-            model: "google/gemini-2.0-flash-lite-001", // Puedes cambiar a otro modelo aquí
+            model: "openai/gpt-4o-mini", // Puedes cambiar a otro modelo aquí
             messages: mensajes,
             temperature: 0.0,
             max_tokens: 3500,
