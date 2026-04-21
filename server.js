@@ -1,4 +1,4 @@
-// server.js - DeepSeek con embeddings 1536 y prompt didáctico
+// server.js - ALUCILEX definitivo (dimensiones 768, DeepSeek pago)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -32,7 +32,7 @@ app.post('/api/consultar', async (req, res) => {
         const embeddingResponse = await openai.embeddings.create({
             model: 'text-embedding-3-small',
             input: pregunta.substring(0, 8000),
-            // No especificamos dimensions: por defecto es 1536 (coincide con tus datos)
+            dimensions: 768   // <-- CLAVE: forzar 768 para coincidir con tus datos
         });
         const embedding = embeddingResponse.data[0].embedding;
 
@@ -90,7 +90,7 @@ FORMATO OBLIGATORIO:
     try {
         console.log("🧠 Consultando a DeepSeek (pago)...");
         const stream = await openai.chat.completions.create({
-            model: "deepseek/deepseek-chat",  // Modelo de pago, rápido
+            model: "deepseek/deepseek-chat",
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: `CONTEXTO LEGAL (prioriza esto):\n${contextoLegal || "No hay contexto específico. Usa tu conocimiento jurídico chileno."}\n\nPREGUNTA: ${pregunta}` }
@@ -116,4 +116,4 @@ FORMATO OBLIGATORIO:
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX (DeepSeek) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX (768) en puerto ${PORT}`));
