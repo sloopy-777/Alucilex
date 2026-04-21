@@ -1,4 +1,4 @@
-// server.js - Optimizado para Gemini 2.0 Flash-Lite (y otros modelos)
+// server.js - Búsqueda genérica de artículos por concepto (sin diccionario)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -60,6 +60,8 @@ app.post('/api/consultar', async (req, res) => {
 
     let contextoLegal = "";
     let busquedaExitosa = false;
+
+    // 1. Búsqueda exacta por número de artículo
     const matchArt = pregunta.match(/\b(art[íi]culo|art\.)\s*(\d{1,4})\b/i);
     if (matchArt && matchArt[2]) {
         const numeroArt = matchArt[2];
@@ -79,6 +81,51 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
+    // 2. Búsqueda por concepto (genérico) si la pregunta pide un artículo que define algo
+    if (!busquedaExitosa && /cuál es el artículo que define|qué artículo define|artículo que habla de|qué articulo regula/i.test(pregunta)) {
+        // Extraer el concepto: tomar la palabra después de "define", "habla de" o "regula"
+        let concepto = "";
+        const matchDefine = pregunta.match(/define\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
+        const matchHabla = pregunta.match(/habla de\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
+        const matchRegula = pregunta.match(/regula\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
+        if (matchDefine) concepto = matchDefine[1];
+        else if (matchHabla) concepto = matchHabla[1];
+        else if (matchRegula) concepto = matchRegula[1];
+        
+        if (concepto) {
+            console.log(`📌 Buscando artículo que define/regula "${concepto}"...`);
+            try {
+                // Generar embedding del concepto
+                const embeddingResponse = await openai.embeddings.create({
+                    model: 'text-embedding-3-small',
+                    input: concepto,
+                    dimensions: 768
+                });
+                const embedding = embeddingResponse.data[0].embedding;
+                
+                // Buscar solo en ley, umbral bajo
+                const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
+                    query_embedding: embedding,
+                    match_threshold: 0.1,
+                    match_count: 5
+                });
+                if (!error && fragmentos && fragmentos.length > 0) {
+                    // Priorizar fragmentos que contengan "define", "concepto", o el concepto en el título
+                    const mejor = fragmentos.find(f => 
+                        (f.contenido && (f.contenido.toLowerCase().includes("define") || f.contenido.toLowerCase().includes("concepto"))) ||
+                        (f.articulo_titulo_completo && f.articulo_titulo_completo.toLowerCase().includes(concepto.toLowerCase()))
+                    ) || fragmentos[0];
+                    contextoLegal = `### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###\n${mejor.contenido}\n### FIN DEL TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${mejor.articulo_numero}]`;
+                    busquedaExitosa = true;
+                    console.log(`✅ Artículo ${mejor.articulo_numero} encontrado por concepto "${concepto}".`);
+                }
+            } catch (err) {
+                console.log("⚠️ Error en búsqueda por concepto:", err.message);
+            }
+        }
+    }
+
+    // 3. Búsqueda semántica general si no se encontró nada
     if (!busquedaExitosa) {
         try {
             let embedding;
@@ -124,7 +171,7 @@ app.post('/api/consultar', async (req, res) => {
 
     if (!contextoLegal) contextoLegal = "No se encontraron fragmentos relevantes en la base de datos.";
 
-    // ========== SYSTEM PROMPT SIMPLIFICADO (para Gemini y otros) ==========
+    // System prompt simplificado pero exigente
     const systemPrompt = 
         "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
         "1. Si el contexto contiene el marcador '### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###', entonces debes copiar el texto que está entre ese marcador y '### FIN DEL TEXTO LITERAL ###' sin cambiar ni una letra, ni puntuación, ni espacios. Usa formato de cita con '> ' al inicio de cada línea.\n\n" +
@@ -136,7 +183,7 @@ app.post('/api/consultar', async (req, res) => {
         "   - ### EJEMPLOS (al menos dos ejemplos concretos)\n" +
         "   - ### CONCLUSIÓN\n\n" +
         "3. PROHIBIDO inventar artículos o citas que no estén en el contexto.\n" +
-        "4. Si el contexto no contiene el artículo solicitado, responde exactamente: 'No encontré el artículo [número] en mi base de datos.'\n" +
+        "4. Si el contexto no contiene el artículo solicitado, responde exactamente: 'No encontré el artículo en mi base de datos.'\n" +
         "5. Usa formato Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
         "6. Responde siempre en español.";
 
@@ -150,13 +197,13 @@ app.post('/api/consultar', async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
 
     try {
-        console.log("🧠 Consultando a Gemini 2.0 Flash-Lite...");
+        console.log("🧠 Consultando a la IA...");
         const stream = await openai.chat.completions.create({
-            model: "openai/gpt-4o-mini", // Puedes cambiar a otro modelo aquí
+            model: "google/gemini-2.0-flash-lite-001", // Cambia a otro modelo si lo prefieres
             messages: mensajes,
             temperature: 0.0,
             max_tokens: 3500,
-            stream: true,   // ✅ CORREGIDO (sin 'cls')
+            stream: true,
         });
 
         let respuestaCompleta = "";
@@ -184,4 +231,4 @@ app.post('/api/consultar', async (req, res) => {
 app.get('/ping', (req, res) => res.status(200).send('OK'));
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Servidor ALUCILEX (optimizado) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor ALUCILEX (búsqueda genérica por concepto) en puerto ${PORT}`));
