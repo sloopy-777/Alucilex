@@ -1,4 +1,4 @@
-// server.js - Búsqueda semántica mejorada + uso exclusivo del contexto
+// server.js - Versión FINAL con cita literal + estructura didáctica completa
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -16,11 +16,9 @@ const openai = new OpenAI({
     baseURL: 'https://openrouter.ai/api/v1' 
 });
 
-// ========== CACHÉS ==========
 const cacheRespuestas = new Map();
 const cacheEmbeddings = new Map();
 const conversaciones = new Map();
-
 const TTL_RESPUESTA = 3600000;
 const MAX_HISTORIAL = 10;
 
@@ -40,7 +38,6 @@ function limpiarCaches() {
 }
 setInterval(limpiarCaches, 600000);
 
-// ========== ENDPOINT PRINCIPAL ==========
 app.post('/api/consultar', async (req, res) => {
     const { pregunta, sessionId } = req.body;
     if (!pregunta) return res.status(400).json({ error: "Pregunta vacía" });
@@ -61,7 +58,6 @@ app.post('/api/consultar', async (req, res) => {
     let historial = conversaciones.get(sessionId);
     if (historial.length > MAX_HISTORIAL) historial = historial.slice(-MAX_HISTORIAL);
 
-    // 1. Búsqueda exacta por número de artículo (prioritaria)
     let contextoLegal = "";
     let busquedaExitosa = false;
     const matchArt = pregunta.match(/\b(art[íi]culo|art\.)\s*(\d{1,4})\b/i);
@@ -75,7 +71,7 @@ app.post('/api/consultar', async (req, res) => {
             .eq('articulo_numero', numeroArt)
             .limit(1);
         if (!error && data && data.length > 0) {
-            contextoLegal = `[CODIGO CIVIL - Art. ${data[0].articulo_numero} - ${data[0].articulo_titulo_completo || ''}]\n${data[0].contenido}`;
+            contextoLegal = `### TEXTO LITERAL ###\n${data[0].contenido}\n### FIN TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${data[0].articulo_numero}]`;
             busquedaExitosa = true;
             console.log(`✅ Artículo ${numeroArt} encontrado directamente.`);
         } else {
@@ -83,7 +79,6 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // 2. Búsqueda semántica si no hubo exacta
     if (!busquedaExitosa) {
         try {
             let embedding;
@@ -108,11 +103,9 @@ app.post('/api/consultar', async (req, res) => {
             });
             if (error) throw error;
             if (fragmentos && fragmentos.length > 0) {
-                // Ordenar: primero ley, luego doctrina (opcional, ya viene por similitud)
                 const leyes = fragmentos.filter(f => f.tipo === 'ley');
                 const doctrina = fragmentos.filter(f => f.tipo === 'doctrina');
                 const ordenados = [...leyes, ...doctrina];
-                // Limitar a 12 fragmentos en total para no saturar
                 const seleccionados = ordenados.slice(0, 12);
                 contextoLegal = seleccionados.map(f => {
                     const tipo = f.tipo === 'ley' ? 'CODIGO CIVIL' : 'DOCTRINA (Orrego)';
@@ -129,39 +122,36 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // 3. Si no hay contexto, forzar a la IA a decirlo
-    if (!contextoLegal) {
-        contextoLegal = "No se encontraron fragmentos relevantes en la base de datos para esta consulta.";
-    }
+    if (!contextoLegal) contextoLegal = "No se encontraron fragmentos relevantes en la base de datos.";
 
-    // 4. Prompt del sistema extremadamente estricto
-    const systemPrompt = `Eres Alucilex, un asistente legal experto en derecho civil chileno. Tu ÚNICA fuente de información es el CONTEXTO LEGAL que se te proporciona. No tienes conocimiento propio ni puedes inventar artículos.
+    const systemPrompt = `Eres Alucilex, un tutor experto en derecho civil chileno. Tu respuesta debe seguir ESTRICTAMENTE esta estructura didáctica:
 
-REGLAS OBLIGATORIAS:
-1. Si el contexto contiene fragmentos del Código Civil o doctrina, úsalos EXCLUSIVAMENTE para responder.
-2. Si el contexto dice "No se encontraron fragmentos relevantes", responde: "No tengo información en mi base de datos para responder a esta pregunta. Por favor, reformula tu consulta."
-3. PROHIBIDO mencionar artículos o conceptos que no estén en el contexto.
-4. Si el contexto contiene artículos, transcríbelos literalmente.
-5. Responde de forma extensa y didáctica (mínimo 500 palabras) solo si el contexto lo permite. Si no, sé breve y honesto.
+1. CITA LITERAL: Si el contexto contiene "### TEXTO LITERAL ###", transcribe ese texto exactamente al inicio (usando formato de cita >). Si no, omite este paso.
+2. CONCEPTO Y DEFINICIÓN: Explica el significado del tema, basándote en la doctrina de Orrego.
+3. ELEMENTOS O REQUISITOS: Enumera en viñetas los componentes necesarios.
+4. CARACTERÍSTICAS: Enumera en viñetas los rasgos esenciales.
+5. CLASIFICACIONES (si aplica): Presenta los tipos o categorías. Si hay más de dos, usa una tabla de Markdown para comparar.
+6. EJEMPLOS: Incluye al menos dos ejemplos concretos y explicados.
+7. CONCLUSIÓN: Resumen breve de la importancia del concepto.
 
-RESPONDE SIEMPRE EN ESPAÑOL.`;
+La respuesta debe ser EXTENSA (mínimo 800 palabras), usar formato Markdown (negritas, viñetas, tablas) y estar en español.`;
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
     mensajes.push({
         role: "user",
-        content: `CONTEXTO LEGAL (ÚNICA FUENTE):\n${contextoLegal}\n\nPREGUNTA: ${pregunta}`
+        content: `INSTRUCCIÓN ESPECÍFICA: Aplica la estructura didáctica completa (cita literal, concepto, elementos, características, clasificaciones (con tabla si corresponde), ejemplos, conclusión).\n\nCONTEXTO LEGAL:\n${contextoLegal}\n\nPREGUNTA: ${pregunta}`
     });
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
 
     try {
-        console.log("🧠 Consultando a la IA...");
+        console.log("🧠 Consultando a DeepSeek...");
         const stream = await openai.chat.completions.create({
             model: "deepseek/deepseek-chat",
             messages: mensajes,
-            temperature: 0.2,
-            max_tokens: 2500,
+            temperature: 0.1,
+            max_tokens: 3500,
             stream: true,
         });
 
@@ -178,7 +168,6 @@ RESPONDE SIEMPRE EN ESPAÑOL.`;
         historial.push({ role: "user", content: pregunta });
         historial.push({ role: "assistant", content: respuestaCompleta });
         conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
-
         console.log("✅ Respuesta completada.");
     } catch (aiError) {
         console.error("❌ Error en IA:", aiError);
@@ -191,4 +180,4 @@ RESPONDE SIEMPRE EN ESPAÑOL.`;
 app.get('/ping', (req, res) => res.status(200).send('OK'));
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX mejorado en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX (didáctico completo) en puerto ${PORT}`));
