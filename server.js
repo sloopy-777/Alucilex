@@ -1,4 +1,4 @@
-// server.js - Versión final con prompt didáctico y búsqueda corregida
+// server.js - DeepSeek con embeddings 1536 y prompt didáctico
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -32,15 +32,15 @@ app.post('/api/consultar', async (req, res) => {
         const embeddingResponse = await openai.embeddings.create({
             model: 'text-embedding-3-small',
             input: pregunta.substring(0, 8000),
-            // dimensions: 1536  // ya es el valor por defecto, opcional
+            // No especificamos dimensions: por defecto es 1536 (coincide con tus datos)
         });
         const embedding = embeddingResponse.data[0].embedding;
 
         console.log("📚 Buscando en Supabase...");
         const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
             query_embedding: embedding,
-            match_threshold: 0.20,   // relevancia
-            match_count: 10
+            match_threshold: 0.20,
+            match_count: 12
         });
 
         if (error) throw error;
@@ -57,17 +57,15 @@ app.post('/api/consultar', async (req, res) => {
         }
     } catch (dbError) {
         console.log("⚠️ Búsqueda fallida. Motivo:", dbError.message);
-        // continuamos sin contexto
     }
 
-    // Prompt del sistema DIDÁCTICO (exige respuesta larga y estructurada)
-    const systemPrompt = `Eres Alucilex, un tutor experto en derecho civil chileno. Responde de forma DIDÁCTICA, EXTENSA (mínimo 500 palabras) y ESTRUCTURADA.
+    const systemPrompt = `Eres Alucilex, un tutor experto en derecho civil chileno. Responde de forma EXTENSA (mínimo 500 palabras), ESTRUCTURADA y DIDÁCTICA.
 
-REGLAS OBLIGATORIAS:
-1. Si la pregunta se refiere a un concepto legal, primero cita el artículo del Código Civil (texto literal).
-2. Luego desarrolla el concepto: definición, elementos, requisitos, características, clasificaciones.
-3. Usa subtítulos (###), negritas, viñetas y ejemplos si los hay.
-4. Si el contexto legal está disponible, úsalo prioritariamente. Si no, complementa con tu conocimiento jurídico chileno.
+REGLAS:
+1. Si la pregunta se refiere a un concepto legal, cita el artículo del Código Civil chileno (texto literal).
+2. Luego desarrolla: definición, elementos, requisitos, características, clasificaciones.
+3. Usa subtítulos (###), negritas, viñetas y ejemplos.
+4. Prioriza el contexto legal proporcionado. Si es insuficiente, complementa con tu conocimiento jurídico chileno (pero no inventes artículos).
 5. PROHIBIDO responder de forma escueta. Explicate como un profesor universitario.
 
 FORMATO OBLIGATORIO:
@@ -90,9 +88,9 @@ FORMATO OBLIGATORIO:
 ...`;
 
     try {
-        console.log("🧠 Consultando a la IA...");
+        console.log("🧠 Consultando a DeepSeek (pago)...");
         const stream = await openai.chat.completions.create({
-            model: "meta-llama/llama-3.3-70b-instruct:free", // o cámbialo por "deepseek/deepseek-chat" si quieres pago
+            model: "deepseek/deepseek-chat",  // Modelo de pago, rápido
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: `CONTEXTO LEGAL (prioriza esto):\n${contextoLegal || "No hay contexto específico. Usa tu conocimiento jurídico chileno."}\n\nPREGUNTA: ${pregunta}` }
@@ -111,11 +109,11 @@ FORMATO OBLIGATORIO:
         console.log("✅ Respuesta completada.");
     } catch (aiError) {
         console.error("❌ Error crítico en OpenRouter:", aiError);
-        res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error de conexión con la IA." })}\n\n`);
+        res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error de conexión con la IA. Por favor, intenta más tarde." })}\n\n`);
         res.write('data: [DONE]\n\n');
         res.end();
     }
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor ALUCILEX (DeepSeek) en puerto ${PORT}`));
