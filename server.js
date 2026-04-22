@@ -185,11 +185,10 @@ app.post('/api/consultar', async (req, res) => {
         "   - ### CARACTERÍSTICAS (lista en viñetas)\n" +
         "   - ### CLASIFICACIONES (si aplica, usa tabla de Markdown si hay más de dos categorías)\n" +
         "   - ### EJEMPLOS (al menos dos ejemplos concretos)\n\n" +
-        "3. CIERRE: NO incluyas una conclusión tradicional. En su lugar, finaliza la respuesta invitando al usuario a profundizar, por ejemplo: '¿Te gustaría que profundice en algún aspecto particular de este tema?' o 'Si necesitas más detalles sobre [subtema relevante], no dudes en preguntar.'\n" +
-        "3. CITA LITERAL: Si el contexto contiene un artículo del Código Civil o un texto marcado con '### TEXTO LITERAL...', transcríbelo exactamente, sin modificar.\n" +
-        "4. PROHIBICIONES: No inventes artículos ni citas que no estén en el contexto. Si no hay información suficiente, responde: 'No encontré suficiente información en mi base de datos para responder completamente.'\n" +
-        "5. FORMATO: Usa Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
-        "6. IDIOMA: Español.";
+        "4. CIERRE: NO incluyas una conclusión tradicional. En su lugar, finaliza la respuesta invitando al usuario a profundizar, por ejemplo: '¿Te gustaría que profundice en algún aspecto particular de este tema?' o 'Si necesitas más detalles sobre [subtema relevante], no dudes en preguntar.'\n" +
+        "5. PROHIBICIONES: No inventes artículos ni citas que no estén en el contexto. Si no hay información suficiente, responde: 'No encontré suficiente información en mi base de datos para responder completamente.'\n" +
+        "6. FORMATO: Usa Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
+        "7. IDIOMA: Español.";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
@@ -252,6 +251,8 @@ app.post('/api/consultar', async (req, res) => {
 });
 
 app.get('/ping', (req, res) => res.status(200).send('OK'));
-
+app.get('/', (req, res) => {
+  res.send('API de Alucilex funcionando. Usa /api/consultar para consultas.');
+});
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Servidor ALUCILEX (prioridad: ley > doctrina > apuntes) en puerto ${PORT}`));
