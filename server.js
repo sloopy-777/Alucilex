@@ -103,7 +103,7 @@ app.post('/api/consultar', async (req, res) => {
                 const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
                     query_embedding: embedding,
                     match_threshold: 0.1,
-                    match_count: 7
+                    match_count: 5
                 });
                 if (!error && fragmentos && fragmentos.length > 0) {
                     const mejor = fragmentos.find(f => 
@@ -177,18 +177,18 @@ app.post('/api/consultar', async (req, res) => {
     // ========== SYSTEM PROMPT CORREGIDO Y CON PRIORIDAD A APUNTES ==========
     const systemPrompt = 
         "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
-        "1. busca en el codigo civil los articulos desde el articulo 1 hasta el 2524 y citarlos  100% , si corresponde al tema  :\n" +
-        "2. PRIORIDAD DE FUENTES: CODIGO CIVIL  siempre debe citarse el articulo del codigo civil ,si es que corresponde , APUNTES PERSONALES DEL USUARIO,Luego usa DOCTRINA (Orrego).\n" +
-        "3. ESTRUCTURA OBLIGATORIA DE RESPUESTA:\n" +
+        "1. PRIORIDAD DE FUENTES: Si el contexto contiene APUNTES PERSONALES DEL USUARIO, debes darles la máxima prioridad sobre cualquier otra fuente. Luego usa DOCTRINA (Orrego) y finalmente CODIGO CIVIL.\n" +
+        "2. ESTRUCTURA OBLIGATORIA DE RESPUESTA:\n" +
         "   - ### CONCEPTO Y DEFINICIÓN\n" +
         "   - ### ELEMENTOS O REQUISITOS (lista en viñetas)\n" +
         "   - ### CARACTERÍSTICAS (lista en viñetas)\n" +
         "   - ### CLASIFICACIONES (si aplica, usa tabla de Markdown si hay más de dos categorías)\n" +
-        "   - ### EJEMPLOS (al menos dos ejemplos concretos)\n\n" +
-        "4. CIERRE: NO incluyas una conclusión tradicional. En su lugar, finaliza la respuesta invitando al usuario a profundizar, por ejemplo: '¿Te gustaría que profundice en algún aspecto particular de este tema?' o 'Si necesitas más detalles sobre [subtema relevante], no dudes en preguntar.'\n" +
-        "5. PROHIBICIONES: No inventes artículos ni citas que no estén en el contexto. Si no hay información suficiente, responde: 'No encontré suficiente información en mi base de datos para responder completamente.'\n" +
-        "6. FORMATO: Usa Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
-        "7. IDIOMA: Español.";
+        "   - ### EJEMPLOS (al menos dos ejemplos concretos)\n" +
+        "   - ### CONCLUSIÓN\n\n" +
+        "3. CITA LITERAL: Si el contexto contiene un artículo del Código Civil o un texto marcado con '### TEXTO LITERAL...', transcríbelo exactamente, sin modificar.\n" +
+        "4. PROHIBICIONES: No inventes artículos ni citas que no estén en el contexto. Si no hay información suficiente, responde: 'No encontré suficiente información en mi base de datos para responder completamente.'\n" +
+        "5. FORMATO: Usa Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
+        "6. IDIOMA: Español.";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
@@ -254,5 +254,6 @@ app.get('/ping', (req, res) => res.status(200).send('OK'));
 app.get('/', (req, res) => {
   res.send('API de Alucilex funcionando. Usa /api/consultar para consultas.');
 });
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Servidor ALUCILEX (prioridad: ley > doctrina > apuntes) en puerto ${PORT}`));
