@@ -174,8 +174,9 @@ app.post('/api/consultar', async (req, res) => {
     // System prompt simplificado pero exigente
     const systemPrompt = 
         "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
-        "1. Después de la cita literal, desarrolla el concepto con esta estructura exacta:\n" +
-        "   - ### ARTICULO DE CODIGO CIVIL CHILENO DE BASEDE DATOS\n" +
+        "1.  desarrolla  el tema de la siguiente manera busca en la base de datos  del codigo los articulos del 1 hasta el 2524 del codigo civil Civil :\n" +
+        "2.  desarrolla  el tema de la siguiente manera busca en la base de datos  del codigo los articulos del 1 hasta el 2524 del codigo civil Civil :\n"
+        "   - ### CONCEPTO  LEGAL O DOCTRINARIO \n" +
         "   - ### DOCTRINA O APUNTES  DE LA BASE DE DATOS QUE CONTENGA  LOS SIGUIENTES PARAMETROS :\n" +
         "   - ### CONCEPTO Y DEFINICIÓN\n" +
         "   - ### ELEMENTOS O REQUISITOS (lista en viñetas)\n" +
@@ -200,7 +201,7 @@ app.post('/api/consultar', async (req, res) => {
     try {
         console.log("🧠 Consultando a la IA...");
         const stream = await openai.chat.completions.create({
-            model: "google/gemini-2.0-flash-lite-001", // Cambia a otro modelo si lo prefieres
+            model: "deepseek/deepseek-chat", // Cambia a otro modelo si lo prefieres
             messages: mensajes,
             temperature: 0.0,
             max_tokens: 3500,
