@@ -206,7 +206,7 @@ app.post('/api/consultar', async (req, res) => {
             const stream = await openai.chat.completions.create({
                 model: "deepseek/deepseek-chat",
                 messages: mensajes,
-                temperature: 0.0,
+                temperature: 2.0,
                 max_tokens: 2500,
                 stream: true,
             });
