@@ -1,4 +1,4 @@
-// server.js - Búsqueda con prioridad: Ley > Doctrina > Apuntes > IA general
+// server.js - Búsqueda genérica de artículos por concepto + reintentos automáticos
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -81,7 +81,7 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // 2. Búsqueda por concepto (artículo que define algo)
+    // 2. Búsqueda por concepto (genérico) si la pregunta pide un artículo que define algo
     if (!busquedaExitosa && /cuál es el artículo que define|qué artículo define|artículo que habla de|qué articulo regula/i.test(pregunta)) {
         let concepto = "";
         const matchDefine = pregunta.match(/define\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
@@ -100,6 +100,7 @@ app.post('/api/consultar', async (req, res) => {
                     dimensions: 768
                 });
                 const embedding = embeddingResponse.data[0].embedding;
+                
                 const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
                     query_embedding: embedding,
                     match_threshold: 0.1,
@@ -120,7 +121,7 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // 3. Búsqueda semántica general (prioriza ley, luego doctrina, luego apuntes)
+    // 3. Búsqueda semántica general si no se encontró nada
     if (!busquedaExitosa) {
         try {
             let embedding;
@@ -145,25 +146,17 @@ app.post('/api/consultar', async (req, res) => {
             });
             if (error) throw error;
             if (fragmentos && fragmentos.length > 0) {
-                // Ordenar: primero ley, luego doctrina, luego apuntes_personales
-                const ordenPrioridad = { ley: 1, doctrina: 2, apunte_personal: 3 };
-                const ordenados = [...fragmentos].sort((a, b) => 
-                    (ordenPrioridad[a.tipo] || 99) - (ordenPrioridad[b.tipo] || 99)
-                );
+                const leyes = fragmentos.filter(f => f.tipo === 'ley');
+                const doctrina = fragmentos.filter(f => f.tipo === 'doctrina');
+                const ordenados = [...leyes, ...doctrina];
                 const seleccionados = ordenados.slice(0, 12);
                 contextoLegal = seleccionados.map(f => {
-                    let tipoLabel = "";
-                    switch (f.tipo) {
-                        case 'ley': tipoLabel = 'CODIGO CIVIL'; break;
-                        case 'doctrina': tipoLabel = 'DOCTRINA (Orrego)'; break;
-                        case 'apunte_personal': tipoLabel = 'APUNTES PERSONALES DEL USUARIO'; break;
-                        default: tipoLabel = f.tipo;
-                    }
+                    const tipo = f.tipo === 'ley' ? 'CODIGO CIVIL' : 'DOCTRINA (Orrego)';
                     const titulo = f.articulo_titulo_completo || f.articulo_numero || 'Fragmento';
-                    return `[${tipoLabel} - ${titulo}]\n${f.contenido}`;
+                    return `[${tipo} - ${titulo}]\n${f.contenido}`;
                 }).join('\n\n');
                 busquedaExitosa = true;
-                console.log(`✅ Contexto recuperado (${seleccionados.length} fragmentos). Prioridad: ley, doctrina, apuntes.`);
+                console.log(`✅ Contexto recuperado (${seleccionados.length} fragmentos).`);
             } else {
                 console.log("⚠️ No se encontraron fragmentos relevantes.");
             }
@@ -174,32 +167,34 @@ app.post('/api/consultar', async (req, res) => {
 
     if (!contextoLegal) contextoLegal = "No se encontraron fragmentos relevantes en la base de datos.";
 
-    // ========== SYSTEM PROMPT CORREGIDO Y CON PRIORIDAD A APUNTES ==========
+    // System prompt corregido (sintaxis y contenido)
     const systemPrompt = 
         "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
-        "1. PRIORIDAD DE FUENTES: Si el contexto contiene APUNTES PERSONALES DEL USUARIO, debes darles la máxima prioridad sobre cualquier otra fuente. Luego usa DOCTRINA (Orrego) y finalmente CODIGO CIVIL.\n" +
-        "2. ESTRUCTURA OBLIGATORIA DE RESPUESTA:\n" +
+        "1. Busca en la base de datos los artículos del 1 al 2524 del Código Civil.\n" +
+        "2. Desarrolla el tema de la siguiente manera:\n" +
+        "   - ### CONCEPTO LEGAL O DOCTRINARIO\n" +
+        "   - ### DOCTRINA O APUNTES DE LA BASE DE DATOS QUE CONTENGA LOS SIGUIENTES PARÁMETROS:\n" +
         "   - ### CONCEPTO Y DEFINICIÓN\n" +
         "   - ### ELEMENTOS O REQUISITOS (lista en viñetas)\n" +
         "   - ### CARACTERÍSTICAS (lista en viñetas)\n" +
         "   - ### CLASIFICACIONES (si aplica, usa tabla de Markdown si hay más de dos categorías)\n" +
         "   - ### EJEMPLOS (al menos dos ejemplos concretos)\n" +
         "   - ### CONCLUSIÓN\n\n" +
-        "3. CITA LITERAL: Si el contexto contiene un artículo del Código Civil o un texto marcado con '### TEXTO LITERAL...', transcríbelo exactamente, sin modificar.\n" +
-        "4. PROHIBICIONES: No inventes artículos ni citas que no estén en el contexto. Si no hay información suficiente, responde: 'No encontré suficiente información en mi base de datos para responder completamente.'\n" +
-        "5. FORMATO: Usa Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
-        "6. IDIOMA: Español.";
+        "3. PROHIBIDO inventar artículos o citas que no estén en el contexto.\n" +
+        "4. Si el contexto no contiene el artículo solicitado, responde exactamente: 'No encontré el artículo en mi base de datos.'\n" +
+        "5. Usa formato Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
+        "6. Responde siempre en español.";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
     mensajes.push({
         role: "user",
-        content: "CONTEXTO LEGAL (ÚNICA FUENTE DE INFORMACIÓN):\n" + contextoLegal + "\n\nINSTRUCCIÓN: Prioriza los APUNTES PERSONALES si existen. Luego la doctrina y el Código Civil. Si el contexto contiene un artículo literal, cópialo exactamente. Responde con la estructura completa (concepto, elementos, características, clasificaciones, ejemplos, conclusión).\n\nPREGUNTA DEL USUARIO: " + pregunta
+        content: "CONTEXTO LEGAL (ÚNICA FUENTE):\n" + contextoLegal + "\n\nINSTRUCCIÓN ESPECÍFICA: Si el contexto contiene '### TEXTO LITERAL...', copia ese texto exactamente. Luego desarrolla el tema con la estructura completa (concepto, elementos, características, clasificaciones, ejemplos, conclusión). No inventes.\n\nPREGUNTA DEL USUARIO: " + pregunta
     });
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
 
-    // ========== REINTENTOS ==========
+    // ========== BLOQUE CON REINTENTOS ==========
     const MAX_REINTENTOS = 3;
     let intento = 0;
     let respuestaCompleta = "";
@@ -209,7 +204,7 @@ app.post('/api/consultar', async (req, res) => {
         try {
             console.log(`🧠 Consultando a la IA (intento ${intento + 1}/${MAX_REINTENTOS})...`);
             const stream = await openai.chat.completions.create({
-                model: "deepseek/deepseek-chat", // o "google/gemini-2.0-flash-lite-001", etc.
+                model: "deepseek/deepseek-chat",
                 messages: mensajes,
                 temperature: 0.0,
                 max_tokens: 2500,
@@ -230,7 +225,7 @@ app.post('/api/consultar', async (req, res) => {
             historial.push({ role: "assistant", content: respuestaCompleta });
             conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
             console.log("✅ Respuesta completada.");
-            return; // éxito
+            return; // Éxito, salimos del middleware
 
         } catch (err) {
             streamError = err;
@@ -256,4 +251,4 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Servidor ALUCILEX (prioridad: ley > doctrina > apuntes) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor ALUCILEX (búsqueda genérica por concepto + reintentos) en puerto ${PORT}`));
