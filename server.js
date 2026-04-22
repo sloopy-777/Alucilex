@@ -1,4 +1,4 @@
-// server.js - Búsqueda genérica de artículos por concepto + reintentos automáticos
+/// server.js - Búsqueda genérica de artículos por concepto + reintentos automáticos
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -206,8 +206,8 @@ app.post('/api/consultar', async (req, res) => {
             const stream = await openai.chat.completions.create({
                 model: "deepseek/deepseek-chat",
                 messages: mensajes,
-                temperature: 2.0,
-                max_tokens: 2500,
+                temperature: 0.0,
+                max_tokens: 3000,
                 stream: true,
             });
 
