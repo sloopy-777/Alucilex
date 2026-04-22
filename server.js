@@ -1,4 +1,4 @@
-// server.js - Búsqueda genérica de artículos por concepto (sin diccionario)
+// server.js - Búsqueda con prioridad: Ley > Doctrina > Apuntes > IA general
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -81,9 +81,8 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // 2. Búsqueda por concepto (genérico) si la pregunta pide un artículo que define algo
+    // 2. Búsqueda por concepto (artículo que define algo)
     if (!busquedaExitosa && /cuál es el artículo que define|qué artículo define|artículo que habla de|qué articulo regula/i.test(pregunta)) {
-        // Extraer el concepto: tomar la palabra después de "define", "habla de" o "regula"
         let concepto = "";
         const matchDefine = pregunta.match(/define\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
         const matchHabla = pregunta.match(/habla de\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
@@ -95,22 +94,18 @@ app.post('/api/consultar', async (req, res) => {
         if (concepto) {
             console.log(`📌 Buscando artículo que define/regula "${concepto}"...`);
             try {
-                // Generar embedding del concepto
                 const embeddingResponse = await openai.embeddings.create({
                     model: 'text-embedding-3-small',
                     input: concepto,
                     dimensions: 768
                 });
                 const embedding = embeddingResponse.data[0].embedding;
-                
-                // Buscar solo en ley, umbral bajo
                 const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
                     query_embedding: embedding,
                     match_threshold: 0.1,
-                    match_count: 5
+                    match_count: 7
                 });
                 if (!error && fragmentos && fragmentos.length > 0) {
-                    // Priorizar fragmentos que contengan "define", "concepto", o el concepto en el título
                     const mejor = fragmentos.find(f => 
                         (f.contenido && (f.contenido.toLowerCase().includes("define") || f.contenido.toLowerCase().includes("concepto"))) ||
                         (f.articulo_titulo_completo && f.articulo_titulo_completo.toLowerCase().includes(concepto.toLowerCase()))
@@ -125,7 +120,7 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // 3. Búsqueda semántica general si no se encontró nada
+    // 3. Búsqueda semántica general (prioriza ley, luego doctrina, luego apuntes)
     if (!busquedaExitosa) {
         try {
             let embedding;
@@ -150,17 +145,25 @@ app.post('/api/consultar', async (req, res) => {
             });
             if (error) throw error;
             if (fragmentos && fragmentos.length > 0) {
-                const leyes = fragmentos.filter(f => f.tipo === 'ley');
-                const doctrina = fragmentos.filter(f => f.tipo === 'doctrina');
-                const ordenados = [...leyes, ...doctrina];
+                // Ordenar: primero ley, luego doctrina, luego apuntes_personales
+                const ordenPrioridad = { ley: 1, doctrina: 2, apunte_personal: 3 };
+                const ordenados = [...fragmentos].sort((a, b) => 
+                    (ordenPrioridad[a.tipo] || 99) - (ordenPrioridad[b.tipo] || 99)
+                );
                 const seleccionados = ordenados.slice(0, 12);
                 contextoLegal = seleccionados.map(f => {
-                    const tipo = f.tipo === 'ley' ? 'CODIGO CIVIL' : 'DOCTRINA (Orrego)';
+                    let tipoLabel = "";
+                    switch (f.tipo) {
+                        case 'ley': tipoLabel = 'CODIGO CIVIL'; break;
+                        case 'doctrina': tipoLabel = 'DOCTRINA (Orrego)'; break;
+                        case 'apunte_personal': tipoLabel = 'APUNTES PERSONALES DEL USUARIO'; break;
+                        default: tipoLabel = f.tipo;
+                    }
                     const titulo = f.articulo_titulo_completo || f.articulo_numero || 'Fragmento';
-                    return `[${tipo} - ${titulo}]\n${f.contenido}`;
+                    return `[${tipoLabel} - ${titulo}]\n${f.contenido}`;
                 }).join('\n\n');
                 busquedaExitosa = true;
-                console.log(`✅ Contexto recuperado (${seleccionados.length} fragmentos).`);
+                console.log(`✅ Contexto recuperado (${seleccionados.length} fragmentos). Prioridad: ley, doctrina, apuntes.`);
             } else {
                 console.log("⚠️ No se encontraron fragmentos relevantes.");
             }
@@ -171,66 +174,84 @@ app.post('/api/consultar', async (req, res) => {
 
     if (!contextoLegal) contextoLegal = "No se encontraron fragmentos relevantes en la base de datos.";
 
-    // System prompt simplificado pero exigente
+    // ========== SYSTEM PROMPT CORREGIDO Y CON PRIORIDAD A APUNTES ==========
     const systemPrompt = 
         "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
-        "1.  desarrolla  el tema de la siguiente manera busca en la base de datos  del codigo los articulos del 1 hasta el 2524 del codigo civil Civil :\n" +
-        "2.  desarrolla  el tema de la siguiente manera busca en la base de datos  del codigo los articulos del 1 hasta el 2524 del codigo civil Civil :\n"
-        "   - ### CONCEPTO  LEGAL O DOCTRINARIO \n" +
-        "   - ### DOCTRINA O APUNTES  DE LA BASE DE DATOS QUE CONTENGA  LOS SIGUIENTES PARAMETROS :\n" +
+        "1. busca en el codigo civil los articulos desde el articulo 1 hasta el 2524:\n" +
+        "2. PRIORIDAD DE FUENTES: CODIGO CIVIL , APUNTES PERSONALES DEL USUARIO,Luego usa DOCTRINA (Orrego).\n" +
+        "3. ESTRUCTURA OBLIGATORIA DE RESPUESTA:\n" +
         "   - ### CONCEPTO Y DEFINICIÓN\n" +
         "   - ### ELEMENTOS O REQUISITOS (lista en viñetas)\n" +
         "   - ### CARACTERÍSTICAS (lista en viñetas)\n" +
         "   - ### CLASIFICACIONES (si aplica, usa tabla de Markdown si hay más de dos categorías)\n" +
         "   - ### EJEMPLOS (al menos dos ejemplos concretos)\n" +
         "   - ### CONCLUSIÓN\n\n" +
-        "3. PROHIBIDO inventar artículos o citas que no estén en el contexto.\n" +
-        "4. Si el contexto no contiene el artículo solicitado, responde exactamente: 'No encontré el artículo en mi base de datos.'\n" +
-        "5. Usa formato Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
-        "6. Responde siempre en español.";
+        "3. CITA LITERAL: Si el contexto contiene un artículo del Código Civil o un texto marcado con '### TEXTO LITERAL...', transcríbelo exactamente, sin modificar.\n" +
+        "4. PROHIBICIONES: No inventes artículos ni citas que no estén en el contexto. Si no hay información suficiente, responde: 'No encontré suficiente información en mi base de datos para responder completamente.'\n" +
+        "5. FORMATO: Usa Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
+        "6. IDIOMA: Español.";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
     mensajes.push({
         role: "user",
-        content: "CONTEXTO LEGAL (ÚNICA FUENTE):\n" + contextoLegal + "\n\nINSTRUCCIÓN ESPECÍFICA: Si el contexto contiene '### TEXTO LITERAL...', copia ese texto exactamente. Luego desarrolla el tema con la estructura completa (concepto, elementos, características, clasificaciones, ejemplos, conclusión). No inventes.\n\nPREGUNTA DEL USUARIO: " + pregunta
+        content: "CONTEXTO LEGAL (ÚNICA FUENTE DE INFORMACIÓN):\n" + contextoLegal + "\n\nINSTRUCCIÓN: Prioriza los APUNTES PERSONALES si existen. Luego la doctrina y el Código Civil. Si el contexto contiene un artículo literal, cópialo exactamente. Responde con la estructura completa (concepto, elementos, características, clasificaciones, ejemplos, conclusión).\n\nPREGUNTA DEL USUARIO: " + pregunta
     });
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
 
-    try {
-        console.log("🧠 Consultando a la IA...");
-        const stream = await openai.chat.completions.create({
-            model: "deepseek/deepseek-chat", // Cambia a otro modelo si lo prefieres
-            messages: mensajes,
-            temperature: 0.0,
-            max_tokens: 3500,
-            stream: true,
-        });
+    // ========== REINTENTOS ==========
+    const MAX_REINTENTOS = 3;
+    let intento = 0;
+    let respuestaCompleta = "";
+    let streamError = null;
 
-        let respuestaCompleta = "";
-        for await (const chunk of stream) {
-            const content = chunk.choices[0]?.delta?.content || "";
-            respuestaCompleta += content;
-            res.write(`data: ${JSON.stringify({ content })}\n\n`);
+    while (intento < MAX_REINTENTOS) {
+        try {
+            console.log(`🧠 Consultando a la IA (intento ${intento + 1}/${MAX_REINTENTOS})...`);
+            const stream = await openai.chat.completions.create({
+                model: "deepseek/deepseek-chat", // o "google/gemini-2.0-flash-lite-001", etc.
+                messages: mensajes,
+                temperature: 0.0,
+                max_tokens: 2500,
+                stream: true,
+            });
+
+            respuestaCompleta = "";
+            for await (const chunk of stream) {
+                const content = chunk.choices[0]?.delta?.content || "";
+                respuestaCompleta += content;
+                res.write(`data: ${JSON.stringify({ content })}\n\n`);
+            }
+            res.write('data: [DONE]\n\n');
+            res.end();
+
+            cacheRespuestas.set(hashPregunta, { respuesta: respuestaCompleta, timestamp: Date.now() });
+            historial.push({ role: "user", content: pregunta });
+            historial.push({ role: "assistant", content: respuestaCompleta });
+            conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
+            console.log("✅ Respuesta completada.");
+            return; // éxito
+
+        } catch (err) {
+            streamError = err;
+            console.error(`❌ Error en IA (intento ${intento + 1}):`, err.message);
+            intento++;
+            if (intento < MAX_REINTENTOS) {
+                console.log(`⏳ Reintentando en 2 segundos...`);
+                await new Promise(r => setTimeout(r, 2000));
+            }
         }
-        res.write('data: [DONE]\n\n');
-        res.end();
-
-        cacheRespuestas.set(hashPregunta, { respuesta: respuestaCompleta, timestamp: Date.now() });
-        historial.push({ role: "user", content: pregunta });
-        historial.push({ role: "assistant", content: respuestaCompleta });
-        conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
-        console.log("✅ Respuesta completada.");
-    } catch (aiError) {
-        console.error("❌ Error en IA:", aiError);
-        res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error temporal. Intenta de nuevo." })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        res.end();
     }
+
+    // Si todos los reintentos fallaron
+    console.error("❌ Todos los reintentos fallaron:", streamError);
+    res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error temporal de conexión con la IA. Intenta de nuevo más tarde." })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
 });
 
 app.get('/ping', (req, res) => res.status(200).send('OK'));
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Servidor ALUCILEX (búsqueda genérica por concepto) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor ALUCILEX (prioridad: ley > doctrina > apuntes) en puerto ${PORT}`));
