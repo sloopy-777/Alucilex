@@ -174,8 +174,7 @@ app.post('/api/consultar', async (req, res) => {
     // System prompt simplificado pero exigente
     const systemPrompt = 
         "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
-        "1. Si el contexto contiene el marcador '### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###', entonces debes copiar el texto que está entre ese marcador y '### FIN DEL TEXTO LITERAL ###' sin cambiar ni una letra, ni puntuación, ni espacios. Usa formato de cita con '> ' al inicio de cada línea.\n\n" +
-        "2. Después de la cita literal, desarrolla el concepto con esta estructura exacta:\n" +
+        "1. Después de la cita literal, desarrolla el concepto con esta estructura exacta:\n" +
         "   - ### ARTICULO DE CODIGO CIVIL CHILENO DE BASEDE DATOS\n" +
         "   - ### DOCTRINA O APUNTES  DE LA BASE DE DATOS QUE CONTENGA  LOS SIGUIENTES PARAMETROS :\n" +
         "   - ### CONCEPTO Y DEFINICIÓN\n" +
