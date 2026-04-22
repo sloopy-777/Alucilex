@@ -1,4 +1,4 @@
-/// server.js - Búsqueda genérica de artículos por concepto + reintentos automáticos
+// server.js - Búsqueda genérica de artículos por concepto + reintentos automáticos
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -61,21 +61,23 @@ app.post('/api/consultar', async (req, res) => {
     let contextoLegal = "";
     let busquedaExitosa = false;
 
-    // 1. Búsqueda exacta por número de artículo
-    const matchArt = pregunta.match(/\b(art[íi]culo|art\.)\s*(\d{1,4})\b/i);
-    if (matchArt && matchArt[2]) {
-        const numeroArt = matchArt[2];
-        console.log(`📌 Búsqueda exacta del artículo ${numeroArt}...`);
+    // ========== NUEVA BÚSQUEDA POR NÚMERO (cualquier número en la pregunta) ==========
+    // Extrae el primer número de 1 a 4 dígitos que aparezca como palabra completa
+    const matchNumero = pregunta.match(/\b(\d{1,4})\b/);
+    if (matchNumero && matchNumero[1]) {
+        const numeroArt = matchNumero[1];
+        console.log(`📌 Búsqueda del artículo con número ${numeroArt}...`);
         const { data, error } = await supabase
             .from('fragmentos_legales')
-            .select('contenido, tipo, articulo_titulo_completo, articulo_numero')
+            .select('contenido, tipo, articulo_titulo_completo, articulo_numero, libro, titulo, numero_limpio')
             .eq('tipo', 'ley')
-            .eq('articulo_numero', numeroArt)
+            .eq('numero_limpio', numeroArt)
+            .order('libro', { ascending: true, nullsLast: true })  // prioriza los que tienen libro
             .limit(1);
         if (!error && data && data.length > 0) {
             contextoLegal = `### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###\n${data[0].contenido}\n### FIN DEL TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${data[0].articulo_numero}]`;
             busquedaExitosa = true;
-            console.log(`✅ Artículo ${numeroArt} encontrado directamente.`);
+            console.log(`✅ Artículo ${numeroArt} encontrado (${data[0].libro ? `Libro ${data[0].libro}` : 'sin libro'}).`);
         } else {
             console.log(`⚠️ No se encontró el artículo ${numeroArt}.`);
         }
