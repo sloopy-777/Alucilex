@@ -204,7 +204,7 @@ app.post('/api/consultar', async (req, res) => {
             model: "deepseek/deepseek-chat", // Cambia a otro modelo si lo prefieres
             messages: mensajes,
             temperature: 0.0,
-            max_tokens: 3500,
+            max_tokens: 2500,
             stream: true,
         });
 
