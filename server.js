@@ -321,7 +321,8 @@ app.post('/api/consultar', async (req, res) => {
 
     // ========== INYECCIÓN DETERMINISTA DIRECTA A LA PANTALLA ==========
     if (contextoLey) {
-        const inyeccion = `### ⚖️ TEXTO DEL ARTÍCULO (Ley Oficial)\n${contextoLey}\n---\n\n`;
+        // Limpiamos el texto para que solo aparezca el número del artículo una vez
+        const inyeccion = `### ⚖️ ARTÍCULO ${numeroArticuloDetectado}\n${contextoLey.replace(/\[CÓDIGO CIVIL - Art. \d+\]\s*Art. \d+./g, '')}\n---\n\n`;
         respuestaCompleta += inyeccion;
         res.write(`data: ${JSON.stringify({ content: inyeccion })}\n\n`);
     }
