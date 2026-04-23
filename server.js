@@ -1,4 +1,4 @@
-// server.js - Búsqueda Jerárquica + Inyección Determinista + Validación Cruzada
+// server.js - Búsqueda Jerárquica + Diccionario de Oro + Inyección Determinista
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -21,6 +21,181 @@ const cacheEmbeddings = new Map();
 const conversaciones = new Map();
 const TTL_RESPUESTA = 3600000;
 const MAX_HISTORIAL = 10;
+
+// ========== DICCIONARIO DE ORO (ESTRATEGIA 1) ==========
+// Matriz determinista unificada: Tier 1, Tier 2 y Extracciones Avanzadas de Apuntes.
+const diccionarioOro = {
+    "ley": 1,
+    "costumbre": 2,
+    "renuncia de los derechos": 12,
+    "efectos territoriales": 14,
+    "interpretacion de la ley": 19,
+    "dolo": 44,
+    "culpa": 44,
+    "fuerza mayor": 45,
+    "caso fortuito": 45,
+    "cauciones": 46,
+    "presunciones": 47,
+    "persona natural": 55,
+    "domicilio civil": 59,
+    "pluralidad de domicilios": 67,
+    "nasciturus": 74,
+    "muerte presunta": 80,
+    "esponsales": 98,
+    "matrimonio": 102,
+    "sociedad conyugal": 135,
+    "bienes familiares": 141,
+    "patrimonio reservado": 150,
+    "filiacion": 186,
+    "patria potestad": 243,
+    "estado civil": 304,
+    "derecho de alimentos": 321,
+    "tutelas": 338,
+    "curadurias": 338,
+    "persona juridica": 545,
+    "bienes corporales": 565,
+    "bienes muebles": 567,
+    "bienes inmuebles": 568,
+    "muebles por anticipacion": 571,
+    "dominio": 582,
+    "propiedad": 582,
+    "modos de adquirir": 588,
+    "ocupacion": 606,
+    "accesion": 643,
+    "tradicion": 670,
+    "inscripcion conservatoria": 686,
+    "posesion": 700,
+    "buena fe subjetiva": 706,
+    "mero tenedor": 714,
+    "mera tenencia": 714,
+    "fideicomiso": 733,
+    "propiedad fiduciaria": 733,
+    "usufructo": 764,
+    "derecho de uso": 811,
+    "derecho de habitacion": 811,
+    "servidumbre": 820,
+    "posesion efectiva": 877,
+    "accion reivindicatoria": 889,
+    "acciones posesorias": 916,
+    "denuncia de obra nueva": 930,
+    "accion de obra ruinosa": 932,
+    "sucesion por causa de muerte": 951,
+    "indignidad": 968,
+    "sucesion intestada": 980,
+    "derecho de representacion": 984,
+    "testamento": 999,
+    "asignaciones forzosas": 1167,
+    "cuarta de mejoras": 1184,
+    "acervos imaginarios": 1185,
+    "desheredamiento": 1207,
+    "beneficio de inventario": 1247,
+    "albacea": 1270,
+    "particion": 1317,
+    "beneficio de separacion": 1378,
+    "fuentes de las obligaciones": 1437,
+    "contrato": 1438,
+    "convencion": 1438,
+    "elementos del contrato": 1444,
+    "capacidad": 1445,
+    "representacion": 1448,
+    "estipulacion a favor de otro": 1449,
+    "promesa de hecho ajeno": 1450,
+    "vicios del consentimiento": 1451,
+    "error": 1452,
+    "fuerza": 1456,
+    "objeto ilicito": 1464,
+    "causa": 1467,
+    "causa ilicita": 1467,
+    "obligaciones naturales": 1470,
+    "obligaciones condicionales": 1473,
+    "condicion resolutoria tacita": 1489,
+    "obligaciones a plazo": 1494,
+    "obligaciones de genero": 1508,
+    "obligaciones solidarias": 1511,
+    "solidaridad pasiva": 1511,
+    "clausula penal": 1535,
+    "clausula penal enorme": 1544,
+    "fuerza obligatoria": 1545,
+    "ley para los contratantes": 1545,
+    "ejecucion de buena fe": 1546,
+    "obligacion de entregar": 1548,
+    "mora": 1551,
+    "excepcion de contrato no cumplido": 1552,
+    "obligaciones de hacer": 1553,
+    "promesa": 1554,
+    "obligaciones de no hacer": 1555,
+    "indemnizacion de perjuicios": 1556,
+    "intereses moratorios": 1559,
+    "interpretacion de los contratos": 1560,
+    "pago efectivo": 1568,
+    "imputacion del pago": 1595,
+    "pago por consignacion": 1599,
+    "pago con subrogacion": 1608,
+    "subrogacion legal": 1610,
+    "beneficio de competencia": 1625,
+    "novacion": 1628,
+    "remision": 1652,
+    "compensacion": 1655,
+    "perdida de la cosa que se debe": 1670,
+    "nulidad absoluta": 1681,
+    "nulidad relativa": 1681,
+    "carga de la prueba": 1698,
+    "instrumento publico": 1699,
+    "simulacion": 1707,
+    "contraescrituras": 1707,
+    "compraventa": 1793,
+    "saneamiento de la eviccion": 1837,
+    "vicios redhibitorios": 1857,
+    "pacto comisorio": 1877,
+    "pacto comisorio calificado": 1879,
+    "pacto de retroventa": 1881,
+    "lesion enorme": 1889,
+    "cesion de derechos": 1901,
+    "cesion de derecho de herencia": 1909,
+    "arrendamiento": 1915,
+    "sociedad": 2053,
+    "mandato": 2116,
+    "comodato": 2174,
+    "prestamo de uso": 2174,
+    "accion de precario": 2195,
+    "mutuo": 2196,
+    "prestamo de consumo": 2196,
+    "deposito": 2211,
+    "secuestro": 2249,
+    "renta vitalicia": 2259,
+    "juego y apuesta": 2264,
+    "cuasicontratos": 2284,
+    "agencia oficiosa": 2286,
+    "pago de lo no debido": 2295,
+    "comunidad": 2304,
+    "responsabilidad extracontractual": 2314,
+    "responsabilidad por el hecho ajeno": 2320,
+    "ruina de edificio": 2323,
+    "presuncion de culpabilidad": 2329,
+    "fianza": 2336,
+    "prenda": 2384,
+    "hipoteca": 2407,
+    "transaccion": 2446,
+    "derecho de prenda general": 2465,
+    "accion oblicua": 2466,
+    "accion pauliana": 2468,
+    "accion revocatoria": 2468,
+    "prelacion de creditos": 2469,
+    "prescripcion": 2492
+};
+
+function buscarEnDiccionario(texto) {
+    const textoNormalizado = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    for (const [concepto, articulo] of Object.entries(diccionarioOro)) {
+        const regex = new RegExp(`\\b${concepto}\\b`, 'i');
+        if (regex.test(textoNormalizado)) {
+            return articulo;
+        }
+    }
+    return null;
+}
+
+// =======================================================
 
 function hashTexto(texto) {
     return crypto.createHash('sha256').update(texto).digest('hex');
@@ -61,31 +236,41 @@ app.post('/api/consultar', async (req, res) => {
     let contextoLey = "";
     let contextoApuntes = "";
     let articuloExactoEncontrado = false;
+    let numeroArticuloDetectado = null;
 
-    // 1. BUSCAR NÚMERO DE ARTÍCULO EXACTO (Del 1 al 2524)
+    // 1A. BUSCAR NÚMERO DE ARTÍCULO EXACTO EN LA PREGUNTA
     const matchNumero = pregunta.match(/(?:art(?:[íi]culo|\.?)?\s*)?(\d{1,4})/i);
     if (matchNumero && matchNumero[1]) {
-        const numeroArt = matchNumero[1];
-        if (parseInt(numeroArt) >= 1 && parseInt(numeroArt) <= 2524) {
-            console.log(`📌 Búsqueda de artículo exacto: ${numeroArt}`);
-            const { data, error } = await supabase
-                .from('fragmentos_legales')
-                .select('contenido, articulo_numero, libro, titulo')
-                .eq('tipo', 'ley')
-                .eq('numero_limpio', numeroArt)
-                .order('libro', { ascending: true, nullsLast: true })
-                .limit(1);
-            
-            if (!error && data && data.length > 0) {
-                contextoLey += `[CÓDIGO CIVIL - Art. ${data[0].articulo_numero}]\n${data[0].contenido}\n\n`;
-                articuloExactoEncontrado = true;
-                console.log(`✅ Artículo ${numeroArt} encontrado en la base.`);
-            }
+        numeroArticuloDetectado = matchNumero[1];
+        console.log(`📌 Número detectado por regex: ${numeroArticuloDetectado}`);
+    } else {
+        // 1B. SI NO HAY NÚMERO, EL ENRUTADOR REVISA EL DICCIONARIO DE ORO
+        const detectadoDiccionario = buscarEnDiccionario(pregunta);
+        if (detectadoDiccionario) {
+            numeroArticuloDetectado = detectadoDiccionario;
+            console.log(`📌 Concepto maestro detectado. Redirigiendo al Art: ${numeroArticuloDetectado}`);
+        }
+    }
+
+    // 2. INYECCIÓN DETERMINISTA DE LA LEY
+    if (numeroArticuloDetectado && parseInt(numeroArticuloDetectado) >= 1 && parseInt(numeroArticuloDetectado) <= 2524) {
+        const { data, error } = await supabase
+            .from('fragmentos_legales')
+            .select('contenido, articulo_numero, libro, titulo')
+            .eq('tipo', 'ley')
+            .eq('numero_limpio', numeroArticuloDetectado)
+            .order('libro', { ascending: true, nullsLast: true })
+            .limit(1);
+        
+        if (!error && data && data.length > 0) {
+            contextoLey += `[CÓDIGO CIVIL - Art. ${data[0].articulo_numero}]\n${data[0].contenido}\n\n`;
+            articuloExactoEncontrado = true;
+            console.log(`✅ Ley inyectada desde base de datos: Art. ${numeroArticuloDetectado}`);
         }
     }
 
     try {
-        // 2. GENERAR EMBEDDING DE LA PREGUNTA
+        // 3. GENERAR EMBEDDING (Para buscar apuntes o ley si falló el enrutador)
         let embedding;
         if (cacheEmbeddings.has(hashPregunta)) {
             embedding = cacheEmbeddings.get(hashPregunta);
@@ -99,22 +284,21 @@ app.post('/api/consultar', async (req, res) => {
             cacheEmbeddings.set(hashPregunta, embedding);
         }
 
-        // 3. BUSCAR SEMÁNTICAMENTE EN LA LEY (Si no se encontró número exacto)
+        // 4. BÚSQUEDA SEMÁNTICA EN LEY (Solo si el diccionario y el regex fallaron)
         if (!articuloExactoEncontrado) {
-            console.log("📚 Buscando coincidencias en CÓDIGO CIVIL...");
+            console.log("📚 Buscando coincidencias semánticas en CÓDIGO CIVIL...");
             const { data: leyes, error: errLey } = await supabase.rpc('buscar_fragmentos', {
                 query_embedding: embedding,
                 filtro_tipo: 'ley',
                 match_threshold: 0.15,
-                match_count: 5
+                match_count: 3
             });
             if (!errLey && leyes && leyes.length > 0) {
                 contextoLey += leyes.map(f => `[CÓDIGO CIVIL - Art. ${f.articulo_numero || 'S/N'}]\n${f.contenido}`).join('\n\n');
-                console.log(`✅ ${leyes.length} fragmentos de ley recuperados.`);
             }
         }
 
-        // 4. BUSCAR SEMÁNTICAMENTE EN LOS APUNTES PERSONALES
+        // 5. BÚSQUEDA SEMÁNTICA ESTRICTA EN APUNTES
         console.log("📚 Buscando coincidencias en APUNTES PERSONALES...");
         const { data: apuntes, error: errApuntes } = await supabase.rpc('buscar_fragmentos', {
             query_embedding: embedding,
@@ -124,46 +308,41 @@ app.post('/api/consultar', async (req, res) => {
         });
         if (!errApuntes && apuntes && apuntes.length > 0) {
             contextoApuntes += apuntes.map(f => `[APUNTE PERSONAL - ${f.articulo_titulo_completo}]\n${f.contenido}`).join('\n\n');
-            console.log(`✅ ${apuntes.length} fragmentos de apuntes recuperados.`);
         }
 
     } catch (error) {
-        console.log("⚠️ Error en búsqueda semántica:", error.message);
+        console.log("⚠️ Error en búsqueda vectorial:", error.message);
     }
 
-    // 5. UNIFICAR CONTEXTOS
     const contextoTotal = `--- LEY OFICIAL ---\n${contextoLey || 'No se encontraron artículos.'}\n\n--- APUNTES Y DOCTRINA ---\n${contextoApuntes || 'No se encontraron apuntes.'}`;
 
-    // PREPARAMOS LA RESPUESTA PARA EL CLIENTE
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-
     let respuestaCompleta = "";
 
-    // ========== 6. INYECCIÓN DETERMINISTA (EL SERVIDOR HABLA PRIMERO) ==========
+    // ========== INYECCIÓN DETERMINISTA DIRECTA A LA PANTALLA ==========
     if (contextoLey) {
         const inyeccion = `### ⚖️ TEXTO DEL ARTÍCULO (Ley Oficial)\n${contextoLey}\n---\n\n`;
         respuestaCompleta += inyeccion;
-        // Imprimimos la ley inmediatamente en la pantalla antes de consultar a la IA
         res.write(`data: ${JSON.stringify({ content: inyeccion })}\n\n`);
     }
 
-    // ========== 7. PROMPT DEL SISTEMA (PROFESOR Y VALIDADOR) ==========
+    // ========== PROMPT DEL SISTEMA (PROFESOR Y VALIDADOR) ==========
     const systemPrompt = 
-        "Eres Alucilex, un riguroso Profesor Titular de Derecho Civil chileno operando en una arquitectura híbrida. Sigue estas REGLAS DE ORO al pie de la letra:\n\n" +
-        "1. PROHIBICIÓN DE REPETIR LEY: El servidor ya le imprimió al alumno el texto literal de la ley. ESTÁ ESTRICTAMENTE PROHIBIDO que transcribas o repitas los artículos del Código Civil. Tu trabajo es puramente analítico y doctrinal.\n" +
-        "2. ANÁLISIS EXHAUSTIVO Y PROFUNDO: Basa tu respuesta PRINCIPALMENTE en la sección 'APUNTES Y DOCTRINA' del contexto. Explica los conceptos de forma extensa, no escueta.\n" +
-        "3. PROTOCOLO DE COMPLEMENTACIÓN Y CONTRASTE: Si debes aportar conocimiento interno para complementar los apuntes, DEBES cumplir dos condiciones:\n" +
-        "   a) Verificar que tu conocimiento NO contradiga los apuntes.\n" +
-        "   b) Declarar explícitamente la fuente oficial chilena de tu aporte (ej. 'Como señala la jurisprudencia de la Corte Suprema', 'Según la doctrina de René Ramos Pazos', 'Siguiendo a Claro Solar o Somarriva').\n" +
-        "4. TABLAS INQUEBRANTABLES: Usa sintaxis estricta Markdown (|---|---|) para cualquier tabla.\n" +
-        "5. ESTRUCTURA OBLIGATORIA (Respeta este orden exacto):\n" +
-        "   - ### CONCEPTO DOCTRINARIO (Desarrollo extenso basado en apuntes)\n" +
-        "   - ### ELEMENTOS O REQUISITOS (Profundidad universitaria)\n" +
-        "   - ### CARACTERÍSTICAS (Explicación detallada)\n" +
-        "   - ### CLASIFICACIONES (Tabla Markdown estricta)\n" +
-        "   - ### INTEGRACIÓN DE FUENTES (Párrafo obligatorio donde expliques brevemente qué se extrajo de los apuntes y qué doctrina chilena usaste para complementar)\n" +
-        "   - ### EJEMPLOS PRÁCTICOS (Mínimo tres, situados en la realidad de Chile)\n" +
-        "   - ### CONCLUSIÓN (Resumen analítico extenso)";
+        "Eres Alucilex, un riguroso Profesor Titular de Derecho Civil chileno. Sigue estas REGLAS DE ORO al pie de la letra:\n\n" +
+        "1. PROHIBICIÓN DE REPETIR LEY: El servidor ya le imprimió al alumno el texto literal de la ley. ESTÁ ESTRICTAMENTE PROHIBIDO que transcribas o repitas artículos del Código Civil.\n" +
+        "2. ANÁLISIS EXHAUSTIVO: Basa tu respuesta PRINCIPALMENTE en la sección 'APUNTES Y DOCTRINA' del contexto.\n" +
+        "3. PROTOCOLO DE COMPLEMENTACIÓN Y CONTRASTE: Si aportas conocimiento para complementar los apuntes, DEBES:\n" +
+        "   a) Verificar que NO contradiga los apuntes.\n" +
+        "   b) Declarar explícitamente la fuente oficial chilena de tu aporte (ej. 'Según la jurisprudencia de la Corte Suprema', 'Siguiendo a René Ramos Pazos o Claro Solar').\n" +
+        "4. TABLAS INQUEBRANTABLES: Usa sintaxis estricta Markdown (|---|---|) para cualquier tabla de clasificación.\n" +
+        "5. ESTRUCTURA OBLIGATORIA:\n" +
+        "   - ### CONCEPTO DOCTRINARIO\n" +
+        "   - ### ELEMENTOS O REQUISITOS\n" +
+        "   - ### CARACTERÍSTICAS\n" +
+        "   - ### CLASIFICACIONES\n" +
+        "   - ### INTEGRACIÓN DE FUENTES\n" +
+        "   - ### EJEMPLOS PRÁCTICOS\n" +
+        "   - ### CONCLUSIÓN";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
@@ -178,11 +357,10 @@ app.post('/api/consultar', async (req, res) => {
 
     while (intento < MAX_REINTENTOS) {
         try {
-            console.log(`🧠 Consultando a la IA (intento ${intento + 1}/${MAX_REINTENTOS})...`);
             const stream = await openai.chat.completions.create({
                 model: "deepseek/deepseek-chat",
                 messages: mensajes,
-                temperature: 0.1, // Temperatura baja para mayor precisión doctrinal
+                temperature: 0.1,
                 max_tokens: 3000,
                 stream: true,
             });
@@ -199,30 +377,22 @@ app.post('/api/consultar', async (req, res) => {
             historial.push({ role: "user", content: pregunta });
             historial.push({ role: "assistant", content: respuestaCompleta });
             conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
-            console.log("✅ Respuesta completada.");
             return;
 
         } catch (err) {
             streamError = err;
-            console.error(`❌ Error en IA (intento ${intento + 1}):`, err.message);
             intento++;
-            if (intento < MAX_REINTENTOS) {
-                console.log(`⏳ Reintentando en 2 segundos...`);
-                await new Promise(r => setTimeout(r, 2000));
-            }
+            if (intento < MAX_REINTENTOS) await new Promise(r => setTimeout(r, 2000));
         }
     }
 
-    console.error("❌ Todos los reintentos fallaron:", streamError);
     res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error temporal de conexión con la IA. Intenta de nuevo más tarde." })}\n\n`);
     res.write('data: [DONE]\n\n');
     res.end();
 });
 
 app.get('/ping', (req, res) => res.status(200).send('OK'));
-app.get('/', (req, res) => {
-    res.send('API de Alucilex funcionando. Usa /api/consultar para consultas.');
-});
+app.get('/', (req, res) => res.send('API de Alucilex funcionando.'));
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Servidor ALUCILEX (búsqueda jerárquica) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor ALUCILEX en puerto ${PORT}`));
