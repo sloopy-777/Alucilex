@@ -63,7 +63,8 @@ app.post('/api/consultar', async (req, res) => {
     let articuloExactoEncontrado = false;
 
     // 1. BUSCAR NÚMERO DE ARTÍCULO EXACTO (Del 1 al 2524)
-    const matchNumero = pregunta.match(/\b(\d{1,4})\b/);
+    // CORRECCIÓN BUGS: Nueva expresión regular infalible que atrapa "art1455", "art 1455" o "1455"
+    const matchNumero = pregunta.match(/(?:art(?:[íi]culo|\.?)?\s*)?(\d{1,4})/i);
     if (matchNumero && matchNumero[1]) {
         const numeroArt = matchNumero[1];
         if (parseInt(numeroArt) >= 1 && parseInt(numeroArt) <= 2524) {
@@ -134,22 +135,21 @@ app.post('/api/consultar', async (req, res) => {
     // 5. UNIFICAR CONTEXTOS SEPARANDO LEY DE DOCTRINA
     const contextoTotal = `--- LEY OFICIAL ---\n${contextoLey || 'No se encontraron artículos.'}\n\n--- APUNTES Y DOCTRINA ---\n${contextoApuntes || 'No se encontraron apuntes.'}`;
 
-    // ========== PROMPT DEL SISTEMA ==========
+    // ========== 6. PROMPT DEL SISTEMA (RAG ESTRICTO ANTI-ALUCINACIÓN) ==========
     const systemPrompt = 
-        "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
-        "1. Tienes dos fuentes de información en el contexto: 'LEY O  CODIGO CIVIL CHILENO ' y 'APUNTES Y DOCTRINA'.\n" +
-        "2. Primero, verifica si hay un artículo del Código Civil en la 'LEY OFICIAL BUSCA  COINCIDENCIAS , ARTICULOS  DESDE EL 1 AL 2425' que responda la pregunta. Si lo hay, cita su contenido literalmente.\n" +
-        "3. Luego, utiliza los 'APUNTES Y DOCTRINA' para desarrollar y explicar el tema.\n" +
+        "Eres Alucilex, un asistente legal experto en derecho civil chileno. Eres un sistema RAG estricto. Debes seguir estas reglas de ORO al pie de la letra:\n\n" +
+        "1. Tienes dos fuentes de información en el contexto: 'LEY OFICIAL' y 'APUNTES Y DOCTRINA'.\n" +
+        "2. EXTREMA PRECISIÓN LEGAL: Cuando cites un artículo del Código Civil, DEBES copiar EXACTAMENTE el texto que aparece bajo la etiqueta [CÓDIGO CIVIL - Art. X] en el contexto. Está ESTRICTAMENTE PROHIBIDO mezclar números de artículos con textos de otros artículos (ej. decir Art. 1444 y poner el texto del 1445).\n" +
+        "3. LIMITACIÓN DE CONOCIMIENTO: Si tu conocimiento interno te sugiere un artículo que NO ESTÁ físicamente en el contexto provisto, NO redactes su texto de memoria. Limítate a la información del contexto o indica explícitamente que no tienes el texto literal a la vista.\n" +
         "4. Tu respuesta debe tener obligatoriamente la siguiente estructura:\n" +
-        "   - ### CONCEPTO LEGAL  Y CITAR ARTICULO  DEL CODIGO CIVIL O DOCTRINARIO (Basado en la ley y apuntes)\n" +
-        "   - ### TEXTO DEL ARTÍCULO (Si aplica, cópialo exacto)\n" +
+        "   - ### CONCEPTO LEGAL O DOCTRINARIO (Basado en la ley y apuntes)\n" +
+        "   - ### TEXTO DEL ARTÍCULO (Solo si está en el contexto, cópialo exacto)\n" +
         "   - ### ELEMENTOS O REQUISITOS (lista en viñetas)\n" +
         "   - ### CARACTERÍSTICAS (lista en viñetas)\n" +
         "   - ### CLASIFICACIONES (usa tabla si hay más de dos categorías)\n" +
         "   - ### EJEMPLOS (al menos dos ejemplos concretos)\n" +
         "   - ### CONCLUSIÓN\n\n" +
-        "5. PROHIBIDO inventar artículos o doctrina. Si no están en el contexto, di 'No encontré la información en mi base de datos'.\n" +
-        "6. Responde siempre en español y usa formato Markdown extenso.";
+        "5. Responde siempre en español y usa formato Markdown extenso.";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
