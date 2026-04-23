@@ -1,4 +1,4 @@
-// server.js - Búsqueda Jerárquica: Primero Ley, luego Apuntes, luego IA
+// server.js - Búsqueda Jerárquica + Inyección Determinista + Validación Cruzada
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -63,7 +63,6 @@ app.post('/api/consultar', async (req, res) => {
     let articuloExactoEncontrado = false;
 
     // 1. BUSCAR NÚMERO DE ARTÍCULO EXACTO (Del 1 al 2524)
-    // CORRECCIÓN BUGS: Nueva expresión regular infalible que atrapa "art1455", "art 1455" o "1455"
     const matchNumero = pregunta.match(/(?:art(?:[íi]culo|\.?)?\s*)?(\d{1,4})/i);
     if (matchNumero && matchNumero[1]) {
         const numeroArt = matchNumero[1];
@@ -132,25 +131,39 @@ app.post('/api/consultar', async (req, res) => {
         console.log("⚠️ Error en búsqueda semántica:", error.message);
     }
 
-    // 5. UNIFICAR CONTEXTOS SEPARANDO LEY DE DOCTRINA
+    // 5. UNIFICAR CONTEXTOS
     const contextoTotal = `--- LEY OFICIAL ---\n${contextoLey || 'No se encontraron artículos.'}\n\n--- APUNTES Y DOCTRINA ---\n${contextoApuntes || 'No se encontraron apuntes.'}`;
 
-    // ========== 6. PROMPT DEL SISTEMA (RAG ESTRICTO Y UNIVERSITARIO) ==========
+    // PREPARAMOS LA RESPUESTA PARA EL CLIENTE
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+
+    let respuestaCompleta = "";
+
+    // ========== 6. INYECCIÓN DETERMINISTA (EL SERVIDOR HABLA PRIMERO) ==========
+    if (contextoLey) {
+        const inyeccion = `### ⚖️ TEXTO DEL ARTÍCULO (Ley Oficial)\n${contextoLey}\n---\n\n`;
+        respuestaCompleta += inyeccion;
+        // Imprimimos la ley inmediatamente en la pantalla antes de consultar a la IA
+        res.write(`data: ${JSON.stringify({ content: inyeccion })}\n\n`);
+    }
+
+    // ========== 7. PROMPT DEL SISTEMA (PROFESOR Y VALIDADOR) ==========
     const systemPrompt = 
-        "Eres Alucilex, un riguroso Profesor Titular de Derecho Civil chileno y un sistema RAG estricto. Debes seguir estas reglas de ORO al pie de la letra:\n\n" +
-        "1. Tienes dos fuentes de información en el contexto: 'LEY OFICIAL' y 'APUNTES Y DOCTRINA'.\n" +
-        "2. NIVEL UNIVERSITARIO EXHAUSTIVO: Está estrictamente prohibido ser escueto, telegráfico o hacer resúmenes simples. Debes explicar cada concepto, elemento y característica con extrema profundidad doctrinal, como si estuvieras dictando una clase magistral.\n" +
-        "3. CITA TEXTUAL OBLIGATORIA (CÓDIGO CIVIL): Si en la sección 'LEY OFICIAL' del contexto aparece el texto de los artículos solicitados, DEBES copiarlos de forma EXACTA, ÍNTEGRA y LITERAL bajo el título '### TEXTO DEL ARTÍCULO'. Nunca uses tus propias palabras para la ley.\n" +
-        "4. FORMATO DE TABLAS INQUEBRANTABLE: Para las clasificaciones, es OBLIGATORIO usar la sintaxis perfecta de Markdown. SI NO INCLUYES LA LÍNEA DE GUIONES Y BARRAS, EL SISTEMA COLAPSARÁ. Ejemplo exacto de estructura obligatoria:\n| Criterio | Clasificación | Explicación |\n|---|---|---|\n| Dato 1 | Dato 2 | Dato 3 |\n" +
-        "5. Tu respuesta debe tener OBLIGATORIAMENTE la siguiente estructura EXACTA y en este orden:\n" +
-        "   - ### CONCEPTO LEGAL O DOCTRINARIO (Desarrollo extenso y profundo)\n" +
-        "   - ### TEXTO DEL ARTÍCULO (Cita literal del Código Civil si está en el contexto)\n" +
-        "   - ### ELEMENTOS O REQUISITOS (Explicación detallada y profunda de cada uno)\n" +
-        "   - ### CARACTERÍSTICAS (Explicación detallada de cada una)\n" +
-        "   - ### CLASIFICACIONES (Tabla Markdown estricta usando |---|---|)\n" +
-        "   - ### EJEMPLOS (Al menos tres ejemplos prácticos con fundamentación jurídica)\n" +
-        "   - ### CONCLUSIÓN (Resumen analítico final extenso)\n\n" +
-        "6. PROHIBIDO inventar artículos o doctrina. Si algo no está en el contexto, indícalo. Responde siempre en español.";
+        "Eres Alucilex, un riguroso Profesor Titular de Derecho Civil chileno operando en una arquitectura híbrida. Sigue estas REGLAS DE ORO al pie de la letra:\n\n" +
+        "1. PROHIBICIÓN DE REPETIR LEY: El servidor ya le imprimió al alumno el texto literal de la ley. ESTÁ ESTRICTAMENTE PROHIBIDO que transcribas o repitas los artículos del Código Civil. Tu trabajo es puramente analítico y doctrinal.\n" +
+        "2. ANÁLISIS EXHAUSTIVO Y PROFUNDO: Basa tu respuesta PRINCIPALMENTE en la sección 'APUNTES Y DOCTRINA' del contexto. Explica los conceptos de forma extensa, no escueta.\n" +
+        "3. PROTOCOLO DE COMPLEMENTACIÓN Y CONTRASTE: Si debes aportar conocimiento interno para complementar los apuntes, DEBES cumplir dos condiciones:\n" +
+        "   a) Verificar que tu conocimiento NO contradiga los apuntes.\n" +
+        "   b) Declarar explícitamente la fuente oficial chilena de tu aporte (ej. 'Como señala la jurisprudencia de la Corte Suprema', 'Según la doctrina de René Ramos Pazos', 'Siguiendo a Claro Solar o Somarriva').\n" +
+        "4. TABLAS INQUEBRANTABLES: Usa sintaxis estricta Markdown (|---|---|) para cualquier tabla.\n" +
+        "5. ESTRUCTURA OBLIGATORIA (Respeta este orden exacto):\n" +
+        "   - ### CONCEPTO DOCTRINARIO (Desarrollo extenso basado en apuntes)\n" +
+        "   - ### ELEMENTOS O REQUISITOS (Profundidad universitaria)\n" +
+        "   - ### CARACTERÍSTICAS (Explicación detallada)\n" +
+        "   - ### CLASIFICACIONES (Tabla Markdown estricta)\n" +
+        "   - ### INTEGRACIÓN DE FUENTES (Párrafo obligatorio donde expliques brevemente qué se extrajo de los apuntes y qué doctrina chilena usaste para complementar)\n" +
+        "   - ### EJEMPLOS PRÁCTICOS (Mínimo tres, situados en la realidad de Chile)\n" +
+        "   - ### CONCLUSIÓN (Resumen analítico extenso)";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
@@ -159,11 +172,8 @@ app.post('/api/consultar', async (req, res) => {
         content: "CONTEXTO RECUPERADO DE LA BASE DE DATOS:\n\n" + contextoTotal + "\n\nPREGUNTA DEL USUARIO: " + pregunta
     });
 
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-
     const MAX_REINTENTOS = 3;
     let intento = 0;
-    let respuestaCompleta = "";
     let streamError = null;
 
     while (intento < MAX_REINTENTOS) {
@@ -172,12 +182,11 @@ app.post('/api/consultar', async (req, res) => {
             const stream = await openai.chat.completions.create({
                 model: "deepseek/deepseek-chat",
                 messages: mensajes,
-                temperature: 0.0,
+                temperature: 0.1, // Temperatura baja para mayor precisión doctrinal
                 max_tokens: 3000,
                 stream: true,
             });
 
-            respuestaCompleta = "";
             for await (const chunk of stream) {
                 const content = chunk.choices[0]?.delta?.content || "";
                 respuestaCompleta += content;
