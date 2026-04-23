@@ -61,8 +61,7 @@ app.post('/api/consultar', async (req, res) => {
     let contextoLegal = "";
     let busquedaExitosa = false;
 
-    // ========== NUEVA BÚSQUEDA POR NÚMERO (cualquier número en la pregunta) ==========
-    // Extrae el primer número de 1 a 4 dígitos que aparezca como palabra completa
+    // ========== 1. BÚSQUEDA POR NÚMERO ==========
     const matchNumero = pregunta.match(/\b(\d{1,4})\b/);
     if (matchNumero && matchNumero[1]) {
         const numeroArt = matchNumero[1];
@@ -72,7 +71,7 @@ app.post('/api/consultar', async (req, res) => {
             .select('contenido, tipo, articulo_titulo_completo, articulo_numero, libro, titulo, numero_limpio')
             .eq('tipo', 'ley')
             .eq('numero_limpio', numeroArt)
-            .order('libro', { ascending: true, nullsLast: true })  // prioriza los que tienen libro
+            .order('libro', { ascending: true, nullsLast: true })
             .limit(1);
         if (!error && data && data.length > 0) {
             contextoLegal = `### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###\n${data[0].contenido}\n### FIN DEL TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${data[0].articulo_numero}]`;
@@ -83,7 +82,7 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // 2. Búsqueda por concepto (genérico) si la pregunta pide un artículo que define algo
+    // ========== 2. BÚSQUEDA POR CONCEPTO DEFINIDO ==========
     if (!busquedaExitosa && /cuál es el artículo que define|qué artículo define|artículo que habla de|qué articulo regula/i.test(pregunta)) {
         let concepto = "";
         const matchDefine = pregunta.match(/define\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
@@ -103,8 +102,10 @@ app.post('/api/consultar', async (req, res) => {
                 });
                 const embedding = embeddingResponse.data[0].embedding;
                 
-                const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
+                // CORRECCIÓN: Llamada a la nueva función buscar_fragmentos con filtro 'ambos'
+                const { data: fragmentos, error } = await supabase.rpc('buscar_fragmentos', {
                     query_embedding: embedding,
+                    filtro_tipo: 'ambos',
                     match_threshold: 0.1,
                     match_count: 5
                 });
@@ -113,9 +114,9 @@ app.post('/api/consultar', async (req, res) => {
                         (f.contenido && (f.contenido.toLowerCase().includes("define") || f.contenido.toLowerCase().includes("concepto"))) ||
                         (f.articulo_titulo_completo && f.articulo_titulo_completo.toLowerCase().includes(concepto.toLowerCase()))
                     ) || fragmentos[0];
-                    contextoLegal = `### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###\n${mejor.contenido}\n### FIN DEL TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${mejor.articulo_numero}]`;
+                    contextoLegal = `### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###\n${mejor.contenido}\n### FIN DEL TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${mejor.articulo_numero || 'Sin Número'}]`;
                     busquedaExitosa = true;
-                    console.log(`✅ Artículo ${mejor.articulo_numero} encontrado por concepto "${concepto}".`);
+                    console.log(`✅ Artículo encontrado por concepto "${concepto}".`);
                 }
             } catch (err) {
                 console.log("⚠️ Error en búsqueda por concepto:", err.message);
@@ -123,7 +124,7 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // 3. Búsqueda semántica general si no se encontró nada
+    // ========== 3. BÚSQUEDA SEMÁNTICA GENERAL ==========
     if (!busquedaExitosa) {
         try {
             let embedding;
@@ -141,19 +142,27 @@ app.post('/api/consultar', async (req, res) => {
             }
 
             console.log("📚 Búsqueda semántica (umbral 0.15, 20 fragmentos)...");
-            const { data: fragmentos, error } = await supabase.rpc('match_fragmentos', {
+            
+            // CORRECCIÓN: Llamada a la nueva función buscar_fragmentos con filtro 'ambos'
+            const { data: fragmentos, error } = await supabase.rpc('buscar_fragmentos', {
                 query_embedding: embedding,
+                filtro_tipo: 'ambos',
                 match_threshold: 0.15,
                 match_count: 20
             });
+            
             if (error) throw error;
             if (fragmentos && fragmentos.length > 0) {
                 const leyes = fragmentos.filter(f => f.tipo === 'ley');
-                const doctrina = fragmentos.filter(f => f.tipo === 'doctrina');
+                // CORRECCIÓN: El filtro debe buscar 'apunte_personal', no 'doctrina'
+                const doctrina = fragmentos.filter(f => f.tipo === 'apunte_personal');
+                
                 const ordenados = [...leyes, ...doctrina];
                 const seleccionados = ordenados.slice(0, 12);
+                
                 contextoLegal = seleccionados.map(f => {
-                    const tipo = f.tipo === 'ley' ? 'CODIGO CIVIL' : 'DOCTRINA (Orrego)';
+                    // CORRECCIÓN: Etiqueta correcta para el prompt de la IA
+                    const tipo = f.tipo === 'ley' ? 'CODIGO CIVIL' : 'APUNTE PERSONAL';
                     const titulo = f.articulo_titulo_completo || f.articulo_numero || 'Fragmento';
                     return `[${tipo} - ${titulo}]\n${f.contenido}`;
                 }).join('\n\n');
@@ -169,7 +178,7 @@ app.post('/api/consultar', async (req, res) => {
 
     if (!contextoLegal) contextoLegal = "No se encontraron fragmentos relevantes en la base de datos.";
 
-    // System prompt corregido (sintaxis y contenido)
+    // ========== 4. PROMPT DEL SISTEMA ==========
     const systemPrompt = 
         "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
         "1. Busca en la base de datos los artículos del 1 al 2524 del Código Civil.\n" +
@@ -196,7 +205,7 @@ app.post('/api/consultar', async (req, res) => {
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
 
-    // ========== BLOQUE CON REINTENTOS ==========
+    // ========== 5. BLOQUE CON REINTENTOS ==========
     const MAX_REINTENTOS = 3;
     let intento = 0;
     let respuestaCompleta = "";
@@ -240,7 +249,6 @@ app.post('/api/consultar', async (req, res) => {
         }
     }
 
-    // Si todos los reintentos fallaron
     console.error("❌ Todos los reintentos fallaron:", streamError);
     res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error temporal de conexión con la IA. Intenta de nuevo más tarde." })}\n\n`);
     res.write('data: [DONE]\n\n');
