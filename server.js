@@ -1,4 +1,4 @@
-// server.js - Búsqueda genérica de artículos por concepto + reintentos automáticos
+// server.js - Búsqueda Jerárquica: Primero Ley, luego Apuntes, luego IA
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -58,154 +58,108 @@ app.post('/api/consultar', async (req, res) => {
     let historial = conversaciones.get(sessionId);
     if (historial.length > MAX_HISTORIAL) historial = historial.slice(-MAX_HISTORIAL);
 
-    let contextoLegal = "";
-    let busquedaExitosa = false;
+    let contextoLey = "";
+    let contextoApuntes = "";
+    let articuloExactoEncontrado = false;
 
-    // ========== 1. BÚSQUEDA POR NÚMERO ==========
+    // 1. BUSCAR NÚMERO DE ARTÍCULO EXACTO (Del 1 al 2524)
     const matchNumero = pregunta.match(/\b(\d{1,4})\b/);
     if (matchNumero && matchNumero[1]) {
         const numeroArt = matchNumero[1];
-        console.log(`📌 Búsqueda del artículo con número ${numeroArt}...`);
-        const { data, error } = await supabase
-            .from('fragmentos_legales')
-            .select('contenido, tipo, articulo_titulo_completo, articulo_numero, libro, titulo, numero_limpio')
-            .eq('tipo', 'ley')
-            .eq('numero_limpio', numeroArt)
-            .order('libro', { ascending: true, nullsLast: true })
-            .limit(1);
-        if (!error && data && data.length > 0) {
-            contextoLegal = `### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###\n${data[0].contenido}\n### FIN DEL TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${data[0].articulo_numero}]`;
-            busquedaExitosa = true;
-            console.log(`✅ Artículo ${numeroArt} encontrado (${data[0].libro ? `Libro ${data[0].libro}` : 'sin libro'}).`);
+        if (parseInt(numeroArt) >= 1 && parseInt(numeroArt) <= 2524) {
+            console.log(`📌 Búsqueda de artículo exacto: ${numeroArt}`);
+            const { data, error } = await supabase
+                .from('fragmentos_legales')
+                .select('contenido, articulo_numero, libro, titulo')
+                .eq('tipo', 'ley')
+                .eq('numero_limpio', numeroArt)
+                .order('libro', { ascending: true, nullsLast: true })
+                .limit(1);
+            
+            if (!error && data && data.length > 0) {
+                contextoLey += `[CÓDIGO CIVIL - Art. ${data[0].articulo_numero}]\n${data[0].contenido}\n\n`;
+                articuloExactoEncontrado = true;
+                console.log(`✅ Artículo ${numeroArt} encontrado en la base.`);
+            }
+        }
+    }
+
+    try {
+        // 2. GENERAR EMBEDDING DE LA PREGUNTA
+        let embedding;
+        if (cacheEmbeddings.has(hashPregunta)) {
+            embedding = cacheEmbeddings.get(hashPregunta);
         } else {
-            console.log(`⚠️ No se encontró el artículo ${numeroArt}.`);
-        }
-    }
-
-    // ========== 2. BÚSQUEDA POR CONCEPTO DEFINIDO ==========
-    if (!busquedaExitosa && /cuál es el artículo que define|qué artículo define|artículo que habla de|qué articulo regula/i.test(pregunta)) {
-        let concepto = "";
-        const matchDefine = pregunta.match(/define\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
-        const matchHabla = pregunta.match(/habla de\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
-        const matchRegula = pregunta.match(/regula\s+([a-záéíóúñ]+(?: [a-záéíóúñ]+)?)/i);
-        if (matchDefine) concepto = matchDefine[1];
-        else if (matchHabla) concepto = matchHabla[1];
-        else if (matchRegula) concepto = matchRegula[1];
-        
-        if (concepto) {
-            console.log(`📌 Buscando artículo que define/regula "${concepto}"...`);
-            try {
-                const embeddingResponse = await openai.embeddings.create({
-                    model: 'text-embedding-3-small',
-                    input: concepto,
-                    dimensions: 768
-                });
-                const embedding = embeddingResponse.data[0].embedding;
-                
-                // CORRECCIÓN: Llamada a la nueva función buscar_fragmentos con filtro 'ambos'
-                const { data: fragmentos, error } = await supabase.rpc('buscar_fragmentos', {
-                    query_embedding: embedding,
-                    filtro_tipo: 'ambos',
-                    match_threshold: 0.1,
-                    match_count: 5
-                });
-                if (!error && fragmentos && fragmentos.length > 0) {
-                    const mejor = fragmentos.find(f => 
-                        (f.contenido && (f.contenido.toLowerCase().includes("define") || f.contenido.toLowerCase().includes("concepto"))) ||
-                        (f.articulo_titulo_completo && f.articulo_titulo_completo.toLowerCase().includes(concepto.toLowerCase()))
-                    ) || fragmentos[0];
-                    contextoLegal = `### TEXTO LITERAL (DEBES COPIAR ESTO EXACTAMENTE) ###\n${mejor.contenido}\n### FIN DEL TEXTO LITERAL ###\n\n[CODIGO CIVIL - Art. ${mejor.articulo_numero || 'Sin Número'}]`;
-                    busquedaExitosa = true;
-                    console.log(`✅ Artículo encontrado por concepto "${concepto}".`);
-                }
-            } catch (err) {
-                console.log("⚠️ Error en búsqueda por concepto:", err.message);
-            }
-        }
-    }
-
-    // ========== 3. BÚSQUEDA SEMÁNTICA GENERAL ==========
-    if (!busquedaExitosa) {
-        try {
-            let embedding;
-            if (cacheEmbeddings.has(hashPregunta)) {
-                console.log("💾 Embedding desde caché");
-                embedding = cacheEmbeddings.get(hashPregunta);
-            } else {
-                const embeddingResponse = await openai.embeddings.create({
-                    model: 'text-embedding-3-small',
-                    input: pregunta.substring(0, 8000),
-                    dimensions: 768
-                });
-                embedding = embeddingResponse.data[0].embedding;
-                cacheEmbeddings.set(hashPregunta, embedding);
-            }
-
-            console.log("📚 Búsqueda semántica (umbral 0.15, 20 fragmentos)...");
-            
-            // CORRECCIÓN: Llamada a la nueva función buscar_fragmentos con filtro 'ambos'
-            const { data: fragmentos, error } = await supabase.rpc('buscar_fragmentos', {
-                query_embedding: embedding,
-                filtro_tipo: 'ambos',
-                match_threshold: 0.15,
-                match_count: 20
+            const embeddingResponse = await openai.embeddings.create({
+                model: 'text-embedding-3-small',
+                input: pregunta.substring(0, 8000),
+                dimensions: 768
             });
-            
-            if (error) throw error;
-            if (fragmentos && fragmentos.length > 0) {
-                const leyes = fragmentos.filter(f => f.tipo === 'ley');
-                // CORRECCIÓN: El filtro debe buscar 'apunte_personal', no 'doctrina'
-                const doctrina = fragmentos.filter(f => f.tipo === 'apunte_personal');
-                
-                const ordenados = [...leyes, ...doctrina];
-                const seleccionados = ordenados.slice(0, 12);
-                
-                contextoLegal = seleccionados.map(f => {
-                    // CORRECCIÓN: Etiqueta correcta para el prompt de la IA
-                    const tipo = f.tipo === 'ley' ? 'CODIGO CIVIL' : 'APUNTE PERSONAL';
-                    const titulo = f.articulo_titulo_completo || f.articulo_numero || 'Fragmento';
-                    return `[${tipo} - ${titulo}]\n${f.contenido}`;
-                }).join('\n\n');
-                busquedaExitosa = true;
-                console.log(`✅ Contexto recuperado (${seleccionados.length} fragmentos).`);
-            } else {
-                console.log("⚠️ No se encontraron fragmentos relevantes.");
-            }
-        } catch (dbError) {
-            console.log("⚠️ Búsqueda semántica fallida:", dbError.message);
+            embedding = embeddingResponse.data[0].embedding;
+            cacheEmbeddings.set(hashPregunta, embedding);
         }
+
+        // 3. BUSCAR SEMÁNTICAMENTE EN LA LEY (Si no se encontró número exacto)
+        if (!articuloExactoEncontrado) {
+            console.log("📚 Buscando coincidencias en CÓDIGO CIVIL...");
+            const { data: leyes, error: errLey } = await supabase.rpc('buscar_fragmentos', {
+                query_embedding: embedding,
+                filtro_tipo: 'ley',
+                match_threshold: 0.15,
+                match_count: 5
+            });
+            if (!errLey && leyes && leyes.length > 0) {
+                contextoLey += leyes.map(f => `[CÓDIGO CIVIL - Art. ${f.articulo_numero || 'S/N'}]\n${f.contenido}`).join('\n\n');
+                console.log(`✅ ${leyes.length} fragmentos de ley recuperados.`);
+            }
+        }
+
+        // 4. BUSCAR SEMÁNTICAMENTE EN LOS APUNTES PERSONALES
+        console.log("📚 Buscando coincidencias en APUNTES PERSONALES...");
+        const { data: apuntes, error: errApuntes } = await supabase.rpc('buscar_fragmentos', {
+            query_embedding: embedding,
+            filtro_tipo: 'apunte_personal',
+            match_threshold: 0.15,
+            match_count: 10
+        });
+        if (!errApuntes && apuntes && apuntes.length > 0) {
+            contextoApuntes += apuntes.map(f => `[APUNTE PERSONAL - ${f.articulo_titulo_completo}]\n${f.contenido}`).join('\n\n');
+            console.log(`✅ ${apuntes.length} fragmentos de apuntes recuperados.`);
+        }
+
+    } catch (error) {
+        console.log("⚠️ Error en búsqueda semántica:", error.message);
     }
 
-    if (!contextoLegal) contextoLegal = "No se encontraron fragmentos relevantes en la base de datos.";
+    // 5. UNIFICAR CONTEXTOS SEPARANDO LEY DE DOCTRINA
+    const contextoTotal = `--- LEY OFICIAL ---\n${contextoLey || 'No se encontraron artículos.'}\n\n--- APUNTES Y DOCTRINA ---\n${contextoApuntes || 'No se encontraron apuntes.'}`;
 
-    // ========== 4. PROMPT DEL SISTEMA ==========
+    // ========== PROMPT DEL SISTEMA ==========
     const systemPrompt = 
         "Eres Alucilex, un asistente legal experto en derecho civil chileno. Debes seguir estas instrucciones al pie de la letra:\n\n" +
-        "1. Busca en la base de datos los artículos del 1 al 2524 del Código Civil.\n" +
-        "2. Desarrolla el tema de la siguiente manera:\n" +
-        "   - ### CONCEPTO LEGAL O DOCTRINARIO\n" +
-        "   - ### DOCTRINA O APUNTES DE LA BASE DE DATOS QUE CONTENGA LOS SIGUIENTES PARÁMETROS:\n" +
-        "   - ### CONCEPTO Y DEFINICIÓN\n" +
+        "1. Tienes dos fuentes de información en el contexto: 'LEY OFICIAL' y 'APUNTES Y DOCTRINA'.\n" +
+        "2. Primero, verifica si hay un artículo del Código Civil en la 'LEY OFICIAL' que responda la pregunta. Si lo hay, cita su contenido literalmente.\n" +
+        "3. Luego, utiliza los 'APUNTES Y DOCTRINA' para desarrollar y explicar el tema.\n" +
+        "4. Tu respuesta debe tener obligatoriamente la siguiente estructura:\n" +
+        "   - ### CONCEPTO LEGAL O DOCTRINARIO (Basado en la ley y apuntes)\n" +
+        "   - ### TEXTO DEL ARTÍCULO (Si aplica, cópialo exacto)\n" +
         "   - ### ELEMENTOS O REQUISITOS (lista en viñetas)\n" +
         "   - ### CARACTERÍSTICAS (lista en viñetas)\n" +
-        "   - ### CLASIFICACIONES (si aplica, usa tabla de Markdown si hay más de dos categorías)\n" +
+        "   - ### CLASIFICACIONES (usa tabla si hay más de dos categorías)\n" +
         "   - ### EJEMPLOS (al menos dos ejemplos concretos)\n" +
         "   - ### CONCLUSIÓN\n\n" +
-        "3. PROHIBIDO inventar artículos o citas que no estén en el contexto.\n" +
-        "4. Si el contexto no contiene el artículo solicitado, responde exactamente: 'No encontré el artículo en mi base de datos.'\n" +
-        "5. Usa formato Markdown (negritas, viñetas, tablas). La respuesta debe ser extensa (mínimo 800 palabras).\n" +
-        "6. Responde siempre en español.";
+        "5. PROHIBIDO inventar artículos o doctrina. Si no están en el contexto, di 'No encontré la información en mi base de datos'.\n" +
+        "6. Responde siempre en español y usa formato Markdown extenso.";
 
     let mensajes = [{ role: "system", content: systemPrompt }];
     for (let msg of historial) mensajes.push(msg);
     mensajes.push({
         role: "user",
-        content: "CONTEXTO LEGAL (ÚNICA FUENTE):\n" + contextoLegal + "\n\nINSTRUCCIÓN ESPECÍFICA: Si el contexto contiene '### TEXTO LITERAL...', copia ese texto exactamente. Luego desarrolla el tema con la estructura completa (concepto, elementos, características, clasificaciones, ejemplos, conclusión). No inventes.\n\nPREGUNTA DEL USUARIO: " + pregunta
+        content: "CONTEXTO RECUPERADO DE LA BASE DE DATOS:\n\n" + contextoTotal + "\n\nPREGUNTA DEL USUARIO: " + pregunta
     });
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
 
-    // ========== 5. BLOQUE CON REINTENTOS ==========
     const MAX_REINTENTOS = 3;
     let intento = 0;
     let respuestaCompleta = "";
@@ -236,7 +190,7 @@ app.post('/api/consultar', async (req, res) => {
             historial.push({ role: "assistant", content: respuestaCompleta });
             conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
             console.log("✅ Respuesta completada.");
-            return; // Éxito, salimos del middleware
+            return;
 
         } catch (err) {
             streamError = err;
@@ -257,8 +211,8 @@ app.post('/api/consultar', async (req, res) => {
 
 app.get('/ping', (req, res) => res.status(200).send('OK'));
 app.get('/', (req, res) => {
-  res.send('API de Alucilex funcionando. Usa /api/consultar para consultas.');
+    res.send('API de Alucilex funcionando. Usa /api/consultar para consultas.');
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Servidor ALUCILEX (búsqueda genérica por concepto + reintentos) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor ALUCILEX (búsqueda jerárquica) en puerto ${PORT}`));
