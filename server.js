@@ -184,17 +184,66 @@ const diccionarioOro = {
     "prescripcion": 2492
 };
 
+// Función auxiliar para calcular la similitud matemática entre dos textos (Distancia de Levenshtein)
+function calcularSimilitud(s1, s2) {
+    let s1Lower = s1.toLowerCase();
+    let s2Lower = s2.toLowerCase();
+    let costs = new Array();
+    for (let i = 0; i <= s1Lower.length; i++) {
+        let lastValue = i;
+        for (let j = 0; j <= s2Lower.length; j++) {
+            if (i == 0) costs[j] = j;
+            else {
+                if (j > 0) {
+                    let newValue = costs[j - 1];
+                    if (s1Lower.charAt(i - 1) != s2Lower.charAt(j - 1))
+                        newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                    costs[j - 1] = lastValue;
+                    lastValue = newValue;
+                }
+            }
+        }
+        if (i > 0) costs[s2Lower.length] = lastValue;
+    }
+    return (1.0 - (costs[s2Lower.length] / Math.max(s1Lower.length, s2Lower.length)));
+}
+
 function buscarEnDiccionario(texto) {
+    // 1. Normalización inicial
     const textoNormalizado = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
+    // 2. Búsqueda Exacta (Prioritaria y más rápida)
     for (const [concepto, articulo] of Object.entries(diccionarioOro)) {
         const regex = new RegExp(`\\b${concepto}\\b`, 'i');
         if (regex.test(textoNormalizado)) {
             return articulo;
         }
     }
+
+    // 3. Búsqueda Difusa (Fuzzy Match) para absorber errores de tipeo y palabras unidas
+    // Limpiamos palabras conectoras para analizar solo los conceptos clave del usuario
+    const palabrasClave = textoNormalizado.split(/[\s,.-]+/).filter(p => p.length > 3 && !['que', 'como', 'cual', 'para'].includes(p));
+    
+    for (const [concepto, articulo] of Object.entries(diccionarioOro)) {
+        const conceptoNormalizado = concepto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        
+        // A) Tolerancia a errores de tipeo (Ej: "laprecripcion" vs "prescripcion")
+        for (let palabra of palabrasClave) {
+            // Exigimos un 70% de similitud para disparar la regla del diccionario
+            if (calcularSimilitud(palabra, conceptoNormalizado) >= 0.70) {
+                return articulo;
+            }
+        }
+        
+        // B) Tolerancia a palabras pegadas sin error ortográfico (Ej: "laprescripcion")
+        if (textoNormalizado.replace(/\s+/g, '').includes(conceptoNormalizado.replace(/\s+/g, ''))) {
+             return articulo;
+        }
+    }
+
     return null;
 }
-
+// =======================================================
 // =======================================================
 
 function hashTexto(texto) {
