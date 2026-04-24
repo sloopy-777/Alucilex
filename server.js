@@ -21,7 +21,7 @@ const conversaciones = new Map();
 const TTL_RESPUESTA = 3600000;
 const MAX_HISTORIAL = 10;
 
-// ========== DICCIONARIO DE ORO (completo, el que tú me diste) ==========
+// ========== DICCIONARIO DE ORO ==========
 const diccionarioOro = {
     "ley": 1,
     "costumbre": 2,
@@ -381,11 +381,12 @@ app.post('/api/consultar', async (req, res) => {
         .select('contenido, articulo_numero, libro, titulo')
         .eq('tipo', 'ley')
         .eq('numero_limpio', numeroArticuloDetectado)
-        .in('libro', [1, 2, 3, 4])           // <-- solo artículos del Código Civil
+        .in('libro', [1, 2, 3, 4])          // <-- solo artículos del Código Civil
         .order('articulo_numero', { ascending: true })
-        .limit(1);   
+        .limit(1);  
         if (!error && data && data.length > 0) {
-            contextoLey += `[CÓDIGO CIVIL - Art. ${data[0].articulo_numero}]\n${data[0].contenido}\n\n`;
+            // MAGIA V6: Etiquetado de identidad reforzado
+            contextoLey += `[LEY ESTRICTA - CÓDIGO CIVIL - Art. ${data[0].articulo_numero}]\n${data[0].contenido}\n\n`;
             articuloExactoEncontrado = true;
         }
     }
@@ -395,8 +396,9 @@ app.post('/api/consultar', async (req, res) => {
         if (cacheEmbeddings.has(hashPregunta)) {
             embedding = cacheEmbeddings.get(hashPregunta);
         } else {
+            // CORRECCIÓN CRÍTICA: Prefijo openai/ añadido para evitar Crash 500 en OpenRouter
             const embeddingResponse = await openai.embeddings.create({
-                model: 'text-embedding-3-small',
+                model: 'openai/text-embedding-3-small',
                 input: pregunta.substring(0, 8000),
                 dimensions: 768
             });
@@ -412,7 +414,8 @@ app.post('/api/consultar', async (req, res) => {
                 match_count: 3
             });
             if (!errLey && leyes && leyes.length > 0) {
-                contextoLey += leyes.map(f => `[CÓDIGO CIVIL - Art. ${f.articulo_numero || 'S/N'}]\n${f.contenido}`).join('\n\n');
+                // MAGIA V6: Etiquetado de identidad reforzado
+                contextoLey += leyes.map(f => `[LEY ESTRICTA - NO ALTERAR - Art. ${f.articulo_numero || 'S/N'}]\n${f.contenido}`).join('\n\n');
             }
         }
 
@@ -423,7 +426,8 @@ app.post('/api/consultar', async (req, res) => {
             match_count: 15
         });
         if (!errApuntes && apuntes && apuntes.length > 0) {
-            contextoApuntes += apuntes.map(f => `[APUNTE PERSONAL - ${f.articulo_titulo_completo}]\n${f.contenido}`).join('\n\n');
+            // MAGIA V6: Etiquetado de identidad reforzado
+            contextoApuntes += apuntes.map(f => `[APUNTE DOCENTE - EXPLICACIÓN DIDÁCTICA - ${f.articulo_titulo_completo}]\n${f.contenido}`).join('\n\n');
         }
 
     } catch (error) {
@@ -435,7 +439,8 @@ app.post('/api/consultar', async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
 
     if (contextoLey) {
-        const inyeccion = `### ⚖️ ARTÍCULO ${numeroArticuloDetectado}\n${contextoLey.replace(/\[CÓDIGO CIVIL - Art. \d+\]\s*Art. \d+./g, '')}\n---\n\n`;
+        // Adaptación de la expresión regular para coincidir con la nueva etiqueta de LEY ESTRICTA
+        const inyeccion = `### ⚖️ ARTÍCULO ${numeroArticuloDetectado || ''}\n${contextoLey.replace(/\[LEY ESTRICTA - .*? - Art\. \d+\]\s*Art\. \d+\./g, '')}\n---\n\n`;
         res.write(`data: ${JSON.stringify({ content: inyeccion })}\n\n`);
     }
 
@@ -443,7 +448,7 @@ app.post('/api/consultar', async (req, res) => {
         "Eres Alucilex, un riguroso Profesor Titular de Derecho Civil chileno. Sigue estas REGLAS DE ORO al pie de la letra:\n\n" +
         "1. PROHIBICIÓN ABSOLUTA DE REPETIR LEY O ENCABEZADOS: El servidor ya le imprimió al alumno el texto literal de la ley y su número. ESTÁ ESTRICTAMENTE PROHIBIDO iniciar tu respuesta repitiendo el artículo, copiando la ley o poniendo íconos de balanza. Arranca de inmediato con el 'CONCEPTO DOCTRINARIO'.\n" +
         "2. PROFUNDIDAD DOGMÁTICA OBLIGATORIA: Tus respuestas no pueden ser superficiales o escuetas. DEBES interconectar instituciones. Por ejemplo, si te preguntan por contratos bilaterales, debes obligatoriamente explicar su importancia práctica mencionando la condición resolutoria tácita, la teoría de los riesgos y la regla 'la mora purga la mora'. Aplica esta misma profundidad analítica y relacional a cualquier tema consultado.\n" +
-        "3. PROTOCOLO DE COMPLEMENTACIÓN: Basa tu respuesta PRINCIPALMENTE en la sección 'APUNTES Y DOCTRINA' del contexto. Si falta información, usa tu conocimiento experto del Derecho Chileno citando a Claro Solar, Alessandri, Somarriva o Ramos Pazos.\n" +
+        "3. PROTOCOLO DE COMPLEMENTACIÓN: Basa tu respuesta PRINCIPALMENTE en la sección 'APUNTES Y DOCTRINA' del contexto que están marcados como [APUNTE DOCENTE]. Si falta información, usa tu conocimiento experto del Derecho Chileno citando a Claro Solar, Alessandri, Somarriva o Ramos Pazos.\n" +
         "4. TABLAS INQUEBRANTABLES: Usa sintaxis estricta Markdown (|---|---|) para cualquier tabla de clasificación.\n" +
         "5. ESTRUCTURA OBLIGATORIA:\n" +
         "   - ### CONCEPTO DOCTRINARIO\n" +
