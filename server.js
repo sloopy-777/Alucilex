@@ -397,3 +397,190 @@ app.get('/', (req, res) => res.send('API de Alucilex funcionando.'));
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Servidor ALUCILEX en puerto ${PORT}`));
+// ===== NUEVO: MODO QUIZ (mientras el chat genera respuesta) =====
+
+// 1. Mapeo de temas a rangos de artículos del Código Civil (ajusta según tu estructura)
+const mapeoTemas = {
+  "bienes": [
+    { campo: "articulo_numero", operador: "gte", valor: 565 },
+    { campo: "articulo_numero", operador: "lte", valor: 595 }
+  ],
+  "dominio": [
+    { campo: "articulo_numero", operador: "gte", valor: 582 },
+    { campo: "articulo_numero", operador: "lte", valor: 605 }
+  ],
+  "tradicion": [
+    { campo: "articulo_numero", operador: "gte", valor: 670 },
+    { campo: "articulo_numero", operador: "lte", valor: 699 }
+  ],
+  "posesion": [
+    { campo: "articulo_numero", operador: "gte", valor: 700 },
+    { campo: "articulo_numero", operador: "lte", valor: 729 }
+  ],
+  "filiacion": [
+    { campo: "articulo_numero", operador: "gte", valor: 179 },
+    { campo: "articulo_numero", operador: "lte", valor: 242 }
+  ],
+  "sucesion": [
+    { campo: "articulo_numero", operador: "gte", valor: 951 },
+    { campo: "articulo_numero", operador: "lte", valor: 1067 }
+  ],
+  "obligaciones": [
+    { campo: "articulo_numero", operador: "gte", valor: 1437 },
+    { campo: "articulo_numero", operador: "lte", valor: 1566 }
+  ],
+  "contratos": [
+    { campo: "articulo_numero", operador: "gte", valor: 1438 },
+    { campo: "articulo_numero", operador: "lte", valor: 2456 }
+  ],
+  "sociedad_conyugal": [
+    { campo: "articulo_numero", operador: "gte", valor: 135 },
+    { campo: "articulo_numero", operador: "lte", valor: 185 }
+  ]
+};
+
+/**
+ * Obtiene todos los artículos de un tema ordenados por número.
+ * Retorna array de objetos { articulo_numero, contenido, titulo }
+ */
+async function obtenerArticulosPorTema(tema) {
+  const filtros = mapeoTemas[tema];
+  if (!filtros) return null;
+
+  let query = supabase
+    .from('fragmentos_legales')
+    .select('articulo_numero, contenido, titulo, libro')
+    .eq('tipo', 'ley');
+
+  // Aplicar los filtros de rango
+  filtros.forEach(f => {
+    if (f.operador === 'gte') query = query.gte(f.campo, f.valor);
+    else if (f.operador === 'lte') query = query.lte(f.campo, f.valor);
+  });
+
+  const { data, error } = await query.order('articulo_numero', { ascending: true });
+
+  if (error) {
+    console.error('Error al obtener artículos del tema:', error);
+    return [];
+  }
+  return data;
+}
+
+// Validador de estructura del JSON del quiz (similar a Reglas de Oro pero para JSON)
+function validarFormatoQuiz(jsonString) {
+  try {
+    const obj = JSON.parse(jsonString);
+    if (!obj.pregunta || typeof obj.pregunta !== 'string') return false;
+    if (!Array.isArray(obj.opciones) || obj.opciones.length !== 4) return false;
+    if (typeof obj.correcta !== 'number' || obj.correcta < 0 || obj.correcta > 3) return false;
+    if (!obj.explicacion || typeof obj.explicacion !== 'string') return false;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Endpoint del quiz
+app.post('/api/quiz/generar', async (req, res) => {
+  const { tema, indice = 0 } = req.body;
+  if (!tema || !mapeoTemas[tema]) {
+    return res.status(400).json({ error: 'Tema no válido o no soportado.' });
+  }
+
+  try {
+    // Obtenemos la lista de artículos (cache local para la sesión podría mejorarse después)
+    const articulos = await obtenerArticulosPorTema(tema);
+    if (!articulos || articulos.length === 0) {
+      return res.status(404).json({ error: 'No se encontraron artículos para este tema.' });
+    }
+
+    const total = articulos.length;
+    const idx = ((indice % total) + total) % total; // permite índices negativos?
+    const articulo = articulos[idx];
+
+    // Preparar el prompt para la IA
+    const promptQuiz = [
+      {
+        role: "system",
+        content: `Eres un experto en Derecho Civil chileno. Genera ÚNICAMENTE un objeto JSON válido con el siguiente formato exacto (sin Markdown, sin comentarios):
+{
+  "pregunta": "texto de la pregunta",
+  "opciones": ["A. opción A", "B. opción B", "C. opción C", "D. opción D"],
+  "correcta": 0, // índice de la opción correcta (0..3)
+  "explicacion": "breve explicación del artículo"
+}
+La pregunta debe ser de opción múltiple, correcta y basada en el artículo que te proporciono.`
+      },
+      {
+        role: "user",
+        content: `Artículo del Código Civil chileno:\nArtículo ${articulo.articulo_numero}:\n${articulo.contenido}\n\nGenera el JSON del quiz.`
+      }
+    ];
+
+    let quizData = null;
+    const MAX_INTENTOS = 3;
+    let intento = 0;
+    let ultimoError = '';
+
+    while (intento < MAX_INTENTOS && !quizData) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "deepseek/deepseek-chat",
+          messages: promptQuiz,
+          temperature: 0.3,
+          max_tokens: 600,
+          response_format: { type: "json_object" } // Forzamos JSON si el modelo lo soporta
+        });
+
+        const respuesta = completion.choices[0]?.message?.content?.trim();
+        if (respuesta && validarFormatoQuiz(respuesta)) {
+          quizData = JSON.parse(respuesta);
+        } else {
+          ultimoError = 'Formato JSON inválido o campos faltantes.';
+          intento++;
+          // Añadir penalización en el siguiente intento
+          promptQuiz[0].content += `\n\n¡Intento ${intento+1}! Asegúrate de devolver EXACTAMENTE el JSON con los campos: pregunta, opciones (array de 4 strings), correcta (índice 0-3), explicacion.`;
+        }
+      } catch (err) {
+        ultimoError = err.message;
+        intento++;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (!quizData) {
+      // Fallback: si la IA falla, generar algo básico
+      const opcionesFallback = [
+        "A. Correcta según el artículo.",
+        "B. Incorrecta.",
+        "C. Incorrecta.",
+        "D. Incorrecta."
+      ];
+      quizData = {
+        pregunta: `¿Qué establece el artículo ${articulo.articulo_numero} del Código Civil?`,
+        opciones: opcionesFallback,
+        correcta: 0,
+        explicacion: `El artículo ${articulo.articulo_numero} dispone: ${articulo.contenido.substring(0, 200)}...`
+      };
+    }
+
+    res.json({
+      articulo: {
+        numero: articulo.articulo_numero,
+        texto: articulo.contenido,
+        titulo: articulo.titulo || ''
+      },
+      pregunta: quizData.pregunta,
+      opciones: quizData.opciones,
+      correcta: quizData.correcta,
+      explicacion: quizData.explicacion,
+      indice: idx,
+      total: total
+    });
+
+  } catch (error) {
+    console.error('Error en /api/quiz/generar:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
