@@ -376,14 +376,14 @@ app.post('/api/consultar', async (req, res) => {
     }
 
     if (numeroArticuloDetectado && parseInt(numeroArticuloDetectado) >= 1 && parseInt(numeroArticuloDetectado) <= 2524) {
-        const { data, error } = await supabase
-            .from('fragmentos_legales')
-            .select('contenido, articulo_numero, libro, titulo')
-            .eq('tipo', 'ley')
-            .eq('numero_limpio', numeroArticuloDetectado)
-            .order('libro', { ascending: true, nullsLast: true })
-            .limit(1);
-        
+    const { data, error } = await supabase
+        .from('fragmentos_legales')
+        .select('contenido, articulo_numero, libro, titulo')
+        .eq('tipo', 'ley')
+        .eq('numero_limpio', numeroArticuloDetectado)
+        .in('libro', [1, 2, 3, 4])           // <-- solo artículos del Código Civil
+        .order('articulo_numero', { ascending: true })
+        .limit(1);   
         if (!error && data && data.length > 0) {
             contextoLey += `[CÓDIGO CIVIL - Art. ${data[0].articulo_numero}]\n${data[0].contenido}\n\n`;
             articuloExactoEncontrado = true;
@@ -408,7 +408,7 @@ app.post('/api/consultar', async (req, res) => {
             const { data: leyes, error: errLey } = await supabase.rpc('buscar_fragmentos', {
                 query_embedding: embedding,
                 filtro_tipo: 'ley',
-                match_threshold: 0.15,
+                match_threshold: 0.25,
                 match_count: 3
             });
             if (!errLey && leyes && leyes.length > 0) {
@@ -420,7 +420,7 @@ app.post('/api/consultar', async (req, res) => {
             query_embedding: embedding,
             filtro_tipo: 'apunte_personal',
             match_threshold: 0.15,
-            match_count: 10
+            match_count: 15
         });
         if (!errApuntes && apuntes && apuntes.length > 0) {
             contextoApuntes += apuntes.map(f => `[APUNTE PERSONAL - ${f.articulo_titulo_completo}]\n${f.contenido}`).join('\n\n');
