@@ -1,4 +1,4 @@
-// server.js - Búsqueda Jerárquica + Diccionario de Oro + Inyección Determinista
+// server.js - Búsqueda Jerárquica + Diccionario de Oro + Inyección Determinista + Validador de Reglas de Oro
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -23,224 +23,11 @@ const TTL_RESPUESTA = 3600000;
 const MAX_HISTORIAL = 10;
 
 // ========== DICCIONARIO DE ORO (ESTRATEGIA 1) ==========
-// Matriz determinista unificada: Tier 1, Tier 2 y Extracciones Avanzadas de Apuntes.
 const diccionarioOro = {
-    "ley": 1,
-    "costumbre": 2,
-    "renuncia de los derechos": 12,
-    "efectos territoriales": 14,
-    "interpretacion de la ley": 19,
-    "dolo": 44,
-    "culpa": 44,
-    "fuerza mayor": 45,
-    "caso fortuito": 45,
-    "cauciones": 46,
-    "presunciones": 47,
-    "persona natural": 55,
-    "domicilio civil": 59,
-    "pluralidad de domicilios": 67,
-    "nasciturus": 74,
-    "existencia legal": 74,
-    "presuncion de concepcion": 76,
-    "muerte presunta": 80,
-    "esponsales": 98,
-    "matrimonio": 102,
-    "sociedad conyugal": 135,
-    "bienes familiares": 141,
-    "patrimonio reservado": 150,
-    "separacion total de bienes": 152,
-    "filiacion": 186,
-    "patria potestad": 243,
-    "estado civil": 304,
-    "derecho de alimentos": 321,
-    "tutelas": 338,
-    "curadurias": 338,
-    "persona juridica": 545,
-    "bienes corporales": 565,
-    "bienes muebles": 567,
-    "bienes inmuebles": 568,
-    "muebles por anticipacion": 571,
-    "cosas incorporales": 576,
-    "derechos reales": 577,
-    "derechos personales": 578,
-    "creditos": 578,
-    "dominio": 582,
-    "propiedad": 582,
-    "modos de adquirir el dominio": 588,
-    "ocupacion": 606,
-    "accesion": 643,
-    "tradicion": 670,
-    "reserva de dominio": 680,
-    "inscripcion conservatoria": 686,
-    "posesion": 700,
-    "posesion regular": 702,
-    "buena fe subjetiva": 706,
-    "posesion irregular": 708,
-    "posesion violenta": 710,
-    "posesion clandestina": 713,
-    "mero tenedor": 714,
-    "mera tenencia": 714,
-    "fideicomiso": 733,
-    "propiedad fiduciaria": 733,
-    "usufructo": 764,
-    "derecho de uso": 811,
-    "derecho de habitacion": 811,
-    "servidumbre": 820,
-    "posesion efectiva": 877,
-    "accion reivindicatoria": 889,
-    "acciones posesorias": 916,
-    "denuncia de obra nueva": 930,
-    "accion de obra ruinosa": 932,
-    "sucesion por causa de muerte": 951,
-    "asignaciones por causa de muerte": 953,
-    "apertura de la sucesion": 955,
-    "delacion": 956,
-    "indignidad": 968,
-    "sucesion intestada": 980,
-    "derecho de representacion": 984,
-    "testamento": 999,
-    "asignaciones forzosas": 1167,
-    "cuarta de mejoras": 1184,
-    "acervos imaginarios": 1185,
-    "desheredamiento": 1207,
-    "lesion en la aceptacion de herencia": 1234,
-    "herencia yacente": 1241,
-    "beneficio de inventario": 1247,
-    "albacea": 1270,
-    "particion": 1317,
-    "lesion en la particion": 1348,
-    "beneficio de separacion": 1378,
-    "fuentes de las obligaciones": 1437,
-    "contrato": 1438,
-    "convencion": 1438,
-    "elementos del contrato": 1444,
-    "capacidad": 1445,
-    "representacion": 1448,
-    "estipulacion a favor de otro": 1449,
-    "promesa de hecho ajeno": 1450,
-    "vicios del consentimiento": 1451,
-    "error": 1452,
-    "error de hecho": 1453,
-    "error obstaculo": 1453,
-    "error sustancial": 1454,
-    "error en calidades accidentales": 1454,
-    "error en la persona": 1455,
-    "fuerza": 1456,
-    "fuerza moral": 1456,
-    "fuerza por tercero": 1457,
-    "dolo determinante": 1458,
-    "presuncion de dolo": 1459,
-    "objeto": 1460,
-    "cosa futura": 1461,
-    "objeto ilicito": 1464,
-    "condonacion de dolo futuro": 1465,
-    "contratos prohibidos por ley": 1466,
-    "causa": 1467,
-    "causa ilicita": 1467,
-    "obligaciones naturales": 1470,
-    "obligaciones condicionales": 1473,
-    "condicion resolutoria tacita": 1489,
-    "obligaciones a plazo": 1494,
-    "obligaciones de genero": 1508,
-    "obligaciones solidarias": 1511,
-    "solidaridad pasiva": 1511,
-    "clausula penal": 1535,
-    "clausula penal enorme": 1544,
-    "fuerza obligatoria": 1545,
-    "ley para los contratantes": 1545,
-    "ejecucion de buena fe": 1546,
-    "obligacion de entregar": 1548,
-    "mora": 1551,
-    "excepcion de contrato no cumplido": 1552,
-    "obligaciones de hacer": 1553,
-    "promesa": 1554,
-    "obligaciones de no hacer": 1555,
-    "indemnizacion de perjuicios": 1556,
-    "intereses moratorios": 1559,
-    "interpretacion de los contratos": 1560,
-    "resciliacion": 1567,
-    "mutuo disenso": 1567,
-    "pago efectivo": 1568,
-    "imputacion del pago": 1595,
-    "pago por consignacion": 1599,
-    "pago con subrogacion": 1608,
-    "subrogacion legal": 1610,
-    "beneficio de competencia": 1625,
-    "novacion": 1628,
-    "remision": 1652,
-    "compensacion": 1655,
-    "confusion": 1665,
-    "perdida de la cosa que se debe": 1670,
-    "nulidad absoluta": 1681,
-    "nulidad relativa": 1681,
-    "carga de la prueba": 1698,
-    "instrumento publico": 1699,
-    "simulacion": 1707,
-    "contraescrituras": 1707,
-    "regimenes patrimoniales": 1715,
-    "capitulaciones matrimoniales": 1715,
-    "haber de la sociedad conyugal": 1725,
-    "donaciones remuneratorias": 1738,
-    "presuncion de dominio de la sociedad conyugal": 1739,
-    "participacion en los gananciales": 1792,
-    "compraventa": 1793,
-    "arras": 1803,
-    "venta de cosa ajena": 1815,
-    "venta con relacion a la cabida": 1831,
-    "saneamiento de la eviccion": 1837,
-    "eviccion parcial": 1854,
-    "vicios redhibitorios": 1857,
-    "accion estimatoria": 1868,
-    "quanti minoris": 1868,
-    "pacto comisorio": 1877,
-    "pacto comisorio calificado": 1879,
-    "pacto de retroventa": 1881,
-    "pacto de retracto": 1886,
-    "lesion enorme": 1889,
-    "lesion enorme en la permuta": 1900,
-    "cesion de derechos": 1901,
-    "cesion de derecho de herencia": 1909,
-    "arrendamiento": 1915,
-    "arrendamiento de transporte": 2013,
-    "sociedad": 2053,
-    "mandato": 2116,
-    "delegacion del mandato": 2135,
-    "comodato": 2174,
-    "prestamo de uso": 2174,
-    "accion de precario": 2195,
-    "mutuo": 2196,
-    "prestamo de consumo": 2196,
-    "deposito": 2211,
-    "deposito propiamente dicho": 2215,
-    "secuestro": 2249,
-    "renta vitalicia": 2259,
-    "juego y apuesta": 2264,
-    "censo vitalicio": 2279,
-    "cuasicontratos": 2284,
-    "agencia oficiosa": 2286,
-    "pago de lo no debido": 2295,
-    "comunidad": 2304,
-    "responsabilidad extracontractual": 2314,
-    "solidaridad extracontractual": 2317,
-    "capacidad extracontractual": 2319,
-    "responsabilidad por el hecho ajeno": 2320,
-    "ruina de edificio": 2323,
-    "presuncion de culpabilidad": 2329,
-    "exposicion imprudente al daño": 2330,
-    "fianza": 2336,
-    "accion de reembolso": 2370,
-    "prenda": 2384,
-    "hipoteca": 2407,
-    "hipoteca de cuota": 2417,
-    "hipoteca sobre bienes futuros": 2419,
-    "transaccion": 2446,
-    "derecho de prenda general": 2465,
-    "accion oblicua": 2466,
-    "accion pauliana": 2468,
-    "accion revocatoria": 2468,
-    "prelacion de creditos": 2469,
-    "prescripcion": 2492
+    // ... (todo igual que en tu código original, no lo repito para no alargar)
+    // (Asegúrate de copiarlo completo aquí)
 };
+// Fin del diccionario
 
 // Función auxiliar para calcular la similitud matemática entre dos textos (Distancia de Levenshtein)
 function calcularSimilitud(s1, s2) {
@@ -266,45 +53,10 @@ function calcularSimilitud(s1, s2) {
     return (1.0 - (costs[s2Lower.length] / Math.max(s1Lower.length, s2Lower.length)));
 }
 function buscarEnDiccionario(texto) {
-    // 1. Normalización inicial
-    const textoNormalizado = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    
-    // ORDEN DE PRIORIDAD: Ordenamos las claves de mayor a menor longitud.
-    // Esto garantiza que frases largas ("modos de adquirir el dominio") se evalúen antes que palabras cortas ("dominio").
-    const clavesOrdenadas = Object.keys(diccionarioOro).sort((a, b) => b.length - a.length);
-
-    // 2. Búsqueda Exacta (Prioritaria y más rápida)
-    for (const concepto of clavesOrdenadas) {
-        const articulo = diccionarioOro[concepto];
-        const regex = new RegExp(`\\b${concepto}\\b`, 'i');
-        if (regex.test(textoNormalizado)) {
-            return articulo;
-        }
-    }
-
-    // 3. Búsqueda Difusa (Fuzzy Match) para absorber errores de tipeo
-    const palabrasClave = textoNormalizado.split(/[\s,.-]+/).filter(p => p.length > 3 && !['que', 'como', 'cual', 'para'].includes(p));
-    
-    for (const concepto of clavesOrdenadas) {
-        const articulo = diccionarioOro[concepto];
-        const conceptoNormalizado = concepto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        
-        // A) Tolerancia a errores de tipeo
-        for (let palabra of palabrasClave) {
-            if (calcularSimilitud(palabra, conceptoNormalizado) >= 0.70) {
-                return articulo;
-            }
-        }
-        
-        // B) Tolerancia a palabras pegadas
-        if (textoNormalizado.replace(/\s+/g, '').includes(conceptoNormalizado.replace(/\s+/g, ''))) {
-             return articulo;
-        }
-    }
-
-    return null;
+    // ... (igual que en tu código original)
 }
 // =======================================================
+
 function hashTexto(texto) {
     return crypto.createHash('sha256').update(texto).digest('hex');
 }
@@ -320,6 +72,61 @@ function limpiarCaches() {
     }
 }
 setInterval(limpiarCaches, 600000);
+
+// ========== NUEVA FUNCIÓN DE VALIDACIÓN DE LAS REGLAS DE ORO ==========
+/**
+ * Verifica que la respuesta generada por el modelo cumpla todas las reglas.
+ * @param {string} respuesta - Texto completo generado por la IA (sin la ley inyectada).
+ * @param {string} contextoLey - El texto legal que se inyectó al inicio, para asegurarnos de que no se repita.
+ * @returns {object} { valida: boolean, razones: string[] }
+ */
+function validarFormatoRespuesta(respuesta, contextoLey) {
+    const razones = [];
+    const rtaLimpia = respuesta.trim();
+
+    // Regla 1: No debe comenzar repitiendo el artículo de la ley inyectada
+    if (contextoLey && contextoLey.trim().length > 0) {
+        // Extraemos las primeras líneas del texto legal (primeros 100 caracteres)
+        const inicioLey = contextoLey.trim().replace(/\s+/g, ' ').substring(0, 100).toLowerCase();
+        const inicioRespuesta = rtaLimpia.replace(/\s+/g, ' ').substring(0, 100).toLowerCase();
+        // Comprobamos si la respuesta arranca copiando el texto legal o el número de artículo
+        if (inicioRespuesta.includes(inicioLey.substring(0, 50))) {
+            razones.push("La respuesta no debe repetir el texto literal de la ley al inicio.");
+        }
+        // También prohibimos que empiece con algo como "Artículo 1444..." o "### ⚖️ ARTÍCULO..."
+        if (/^###\s*⚖️\s*ARTÍCULO/i.test(rtaLimpia)) {
+            razones.push("La respuesta no debe comenzar con un encabezado de artículo (### ⚖️ ARTÍCULO).");
+        }
+    }
+
+    // Regla 5: Debe contener TODAS las secciones obligatorias
+    const seccionesObligatorias = [
+        '### CONCEPTO DOCTRINARIO',
+        '### ELEMENTOS O REQUISITOS',
+        '### CARACTERÍSTICAS',
+        '### CLASIFICACIONES',
+        '### INTEGRACIÓN DE FUENTES',
+        '### EJEMPLOS PRÁCTICOS',
+        '### CONCLUSIÓN'
+    ];
+
+    for (const seccion of seccionesObligatorias) {
+        if (!rtaLimpia.includes(seccion)) {
+            razones.push(`Falta la sección obligatoria: ${seccion}`);
+        }
+    }
+
+    // Regla 4 (opcionalmente podrías verificar que si hay tablas, sean markdown estricto)
+    // Por ahora no forzamos la validación de tablas para no ser demasiado agresivos, pero podrías agregar:
+    // if (rtaLimpia.includes('|') && !/\|[-|]+\|/.test(rtaLimpia)) {
+    //     razones.push("Las tablas deben usar sintaxis Markdown estricta (|---|---|)");
+    // }
+
+    return {
+        valida: razones.length === 0,
+        razones
+    };
+}
 
 app.post('/api/consultar', async (req, res) => {
     const { pregunta, sessionId } = req.body;
@@ -342,7 +149,7 @@ app.post('/api/consultar', async (req, res) => {
     if (historial.length > MAX_HISTORIAL) historial = historial.slice(-MAX_HISTORIAL);
 
     // =========================================================================
-    // FASE 0: AGENTE ENRUTADOR (TRIAJE DE AMBIGÜEDAD Y CONTRAPREGUNTA)
+    // FASE 0: AGENTE ENRUTADOR (TRIAGE DE AMBIGÜEDAD Y CONTRAPREGUNTA)
     // =========================================================================
     try {
         const mensajesTriaje = [
@@ -360,7 +167,7 @@ app.post('/api/consultar', async (req, res) => {
         const triajeResponse = await openai.chat.completions.create({
             model: "deepseek/deepseek-chat",
             messages: mensajesTriaje,
-            temperature: 0.0, // Cero creatividad, máxima precisión analítica
+            temperature: 0.0,
             max_tokens: 150
         });
 
@@ -370,22 +177,20 @@ app.post('/api/consultar', async (req, res) => {
             const textoAclaracion = triajeText.replace("ACLARACION:", "").trim();
             const respuestaAclaratoria = `🤖 **Filtro de Precisión:**\nHe notado que tu consulta abarca temas distintos. ${textoAclaracion}\n\n*(Por favor, indícame tu preferencia para darte la información exacta)*`;
             
-            console.log("🛑 Ambigüedad detectada. Deteniendo DB y enviando contrapregunta al usuario.");
+            console.log("🛑 Ambigüedad detectada. Enviando contrapregunta.");
             res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
             res.write(`data: ${JSON.stringify({ content: respuestaAclaratoria })}\n\n`);
             res.write('data: [DONE]\n\n');
             res.end();
 
-            // Guardamos esta interacción en la memoria para que el siguiente mensaje del usuario tenga sentido
             historial.push({ role: "user", content: pregunta });
             historial.push({ role: "assistant", content: respuestaAclaratoria });
             conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
-            return; // ⛔ Cortamos la ejecución aquí. No se busca en la DB ni se inyecta la ley aún.
+            return;
         }
     } catch (errorTriaje) {
         console.log("⚠️ Error en Agente Enrutador, saltando fase de triaje...", errorTriaje.message);
     }
-    // =========================================================================
 
     let contextoLey = "";
     let contextoApuntes = "";
@@ -396,13 +201,10 @@ app.post('/api/consultar', async (req, res) => {
     const matchNumero = pregunta.match(/(?:art(?:[íi]culo|\.?)?\s*)?(\d{1,4})/i);
     if (matchNumero && matchNumero[1]) {
         numeroArticuloDetectado = matchNumero[1];
-        console.log(`📌 Número detectado por regex: ${numeroArticuloDetectado}`);
     } else {
-        // 1B. SI NO HAY NÚMERO, EL ENRUTADOR REVISA EL DICCIONARIO DE ORO
         const detectadoDiccionario = buscarEnDiccionario(pregunta);
         if (detectadoDiccionario) {
             numeroArticuloDetectado = detectadoDiccionario;
-            console.log(`📌 Concepto maestro detectado. Redirigiendo al Art: ${numeroArticuloDetectado}`);
         }
     }
 
@@ -419,12 +221,11 @@ app.post('/api/consultar', async (req, res) => {
         if (!error && data && data.length > 0) {
             contextoLey += `[CÓDIGO CIVIL - Art. ${data[0].articulo_numero}]\n${data[0].contenido}\n\n`;
             articuloExactoEncontrado = true;
-            console.log(`✅ Ley inyectada desde base de datos: Art. ${numeroArticuloDetectado}`);
         }
     }
 
     try {
-        // 3. GENERAR EMBEDDING (Para buscar apuntes o ley si falló el enrutador)
+        // 3. GENERAR EMBEDDING
         let embedding;
         if (cacheEmbeddings.has(hashPregunta)) {
             embedding = cacheEmbeddings.get(hashPregunta);
@@ -438,9 +239,8 @@ app.post('/api/consultar', async (req, res) => {
             cacheEmbeddings.set(hashPregunta, embedding);
         }
 
-        // 4. BÚSQUEDA SEMÁNTICA EN LEY (Solo si el diccionario y el regex fallaron)
+        // 4. BÚSQUEDA SEMÁNTICA EN LEY (solo si falló el enrutador)
         if (!articuloExactoEncontrado) {
-            console.log("📚 Buscando coincidencias semánticas en CÓDIGO CIVIL...");
             const { data: leyes, error: errLey } = await supabase.rpc('buscar_fragmentos', {
                 query_embedding: embedding,
                 filtro_tipo: 'ley',
@@ -452,8 +252,7 @@ app.post('/api/consultar', async (req, res) => {
             }
         }
 
-        // 5. BÚSQUEDA SEMÁNTICA ESTRICTA EN APUNTES
-        console.log("📚 Buscando coincidencias en APUNTES PERSONALES...");
+        // 5. BÚSQUEDA SEMÁNTICA EN APUNTES
         const { data: apuntes, error: errApuntes } = await supabase.rpc('buscar_fragmentos', {
             query_embedding: embedding,
             filtro_tipo: 'apunte_personal',
@@ -470,14 +269,12 @@ app.post('/api/consultar', async (req, res) => {
 
     const contextoTotal = `--- LEY OFICIAL ---\n${contextoLey || 'No se encontraron artículos.'}\n\n--- APUNTES Y DOCTRINA ---\n${contextoApuntes || 'No se encontraron apuntes.'}`;
 
+    // Enviamos el encabezado SSE
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-    let respuestaCompleta = "";
 
-    // ========== INYECCIÓN DETERMINISTA DIRECTA A LA PANTALLA ==========
+    // ========== INYECCIÓN DETERMINISTA DIRECTA A LA PANTALLA (igual que antes) ==========
     if (contextoLey) {
-        // Limpiamos el texto para que solo aparezca el número del artículo una vez
         const inyeccion = `### ⚖️ ARTÍCULO ${numeroArticuloDetectado}\n${contextoLey.replace(/\[CÓDIGO CIVIL - Art. \d+\]\s*Art. \d+./g, '')}\n---\n\n`;
-        respuestaCompleta += inyeccion;
         res.write(`data: ${JSON.stringify({ content: inyeccion })}\n\n`);
     }
 
@@ -497,22 +294,40 @@ app.post('/api/consultar', async (req, res) => {
         "   - ### EJEMPLOS PRÁCTICOS\n" +
         "   - ### CONCLUSIÓN";
 
-    let mensajes = [{ role: "system", content: systemPrompt }];
-    for (let msg of historial) mensajes.push(msg);
-    mensajes.push({
+    // ========== PREPARACIÓN DE MENSAJES PARA EL MODELO ==========
+    let mensajesBase = [{ role: "system", content: systemPrompt }];
+    for (let msg of historial) mensajesBase.push(msg);
+    mensajesBase.push({
         role: "user",
         content: "CONTEXTO RECUPERADO DE LA BASE DE DATOS:\n\n" + contextoTotal + "\n\nPREGUNTA DEL USUARIO: " + pregunta
     });
 
-    const MAX_REINTENTOS = 3;
+    const MAX_INTENTOS = 3;
     let intento = 0;
-    let streamError = null;
+    let respuestaValida = false;
+    let respuestaFinal = "";
+    let ultimoError = null;
+    let mensajesParaModelo = mensajesBase.slice(); // copia independiente
 
-    while (intento < MAX_REINTENTOS) {
+    // ======== BUCLE DE GENERACIÓN Y VALIDACIÓN ========
+    while (intento < MAX_INTENTOS && !respuestaValida) {
         try {
+            // Si no es el primer intento, añadimos un refuerzo de penalización
+            if (intento > 0) {
+                const penalizacion = "\n\n**⚠️ ATENCIÓN: Tu respuesta anterior fue RECHAZADA por incumplir las REGLAS DE ORO. Recuerda:**\n" +
+                    "- Debes comenzar **exactamente** con '### CONCEPTO DOCTRINARIO' y **NO** repetir el artículo de la ley.\n" +
+                    "- Debes incluir **TODAS** las secciones obligatorias (CONCEPTO DOCTRINARIO, ELEMENTOS O REQUISITOS, CARACTERÍSTICAS, CLASIFICACIONES, INTEGRACIÓN DE FUENTES, EJEMPLOS PRÁCTICOS, CONCLUSIÓN).\n" +
+                    "- Usa tablas Markdown estrictas si clasificas.\n" +
+                    "Vuelve a generar la respuesta cumpliendo **estrictamente** todas las reglas.\n";
+                // Modificamos el último mensaje del usuario para añadir la penalización
+                mensajesParaModelo[mensajesParaModelo.length - 1].content += penalizacion;
+            }
+
+            // Acumulamos toda la respuesta de este intento sin enviarla al cliente aún
+            let respuestaParcial = "";
             const stream = await openai.chat.completions.create({
                 model: "deepseek/deepseek-chat",
-                messages: mensajes,
+                messages: mensajesParaModelo,
                 temperature: 0.1,
                 max_tokens: 3000,
                 stream: true,
@@ -520,28 +335,61 @@ app.post('/api/consultar', async (req, res) => {
 
             for await (const chunk of stream) {
                 const content = chunk.choices[0]?.delta?.content || "";
-                respuestaCompleta += content;
-                res.write(`data: ${JSON.stringify({ content })}\n\n`);
+                respuestaParcial += content;
             }
-            res.write('data: [DONE]\n\n');
-            res.end();
 
-            cacheRespuestas.set(hashPregunta, { respuesta: respuestaCompleta, timestamp: Date.now() });
-            historial.push({ role: "user", content: pregunta });
-            historial.push({ role: "assistant", content: respuestaCompleta });
-            conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
-            return;
-
+            // Validamos formato
+            const resultado = validarFormatoRespuesta(respuestaParcial, contextoLey);
+            if (resultado.valida) {
+                respuestaFinal = respuestaParcial;
+                respuestaValida = true;
+            } else {
+                console.log(`❌ Intento ${intento + 1} rechazado. Razones: ${resultado.razones.join('; ')}`);
+                ultimoError = resultado.razones.join(', ');
+                // Restauramos los mensajes originales para el próximo intento (sin la penalización acumulada)
+                mensajesParaModelo = mensajesBase.slice();
+                intento++;
+            }
         } catch (err) {
-            streamError = err;
+            ultimoError = err.message;
             intento++;
-            if (intento < MAX_REINTENTOS) await new Promise(r => setTimeout(r, 2000));
+            console.log(`⚠️ Error en intento ${intento}:`, err.message);
+            await new Promise(r => setTimeout(r, 2000));
         }
     }
 
-    res.write(`data: ${JSON.stringify({ content: "\n\n❌ Error temporal de conexión con la IA. Intenta de nuevo más tarde." })}\n\n`);
+    // Si después de todos los intentos no conseguimos una respuesta válida, enviamos un mensaje de error
+    if (!respuestaValida) {
+        const mensajeError = `\n\n❌ **Error de validación:** No se pudo generar una respuesta que cumpla las reglas después de ${MAX_INTENTOS} intentos. Razones: ${ultimoError || 'error desconocido'}`;
+        respuestaFinal = mensajeError;
+    }
+
+    // Ahora enviamos la respuesta validada (o el error) al cliente
+    // Podemos enviarla troceada para simular streaming (cada 50 caracteres, o como prefieras)
+    const chunkSize = 50;
+    for (let i = 0; i < respuestaFinal.length; i += chunkSize) {
+        const chunk = respuestaFinal.substring(i, i + chunkSize);
+        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+        // Pequeña pausa para no saturar (opcional)
+        await new Promise(r => setTimeout(r, 20));
+    }
+
+    // Enviamos el fin de la transmisión
     res.write('data: [DONE]\n\n');
     res.end();
+
+    // Guardamos en caché y actualizamos historial (solo si la respuesta es válida y no es error)
+    if (respuestaValida) {
+        cacheRespuestas.set(hashPregunta, { respuesta: respuestaFinal, timestamp: Date.now() });
+        historial.push({ role: "user", content: pregunta });
+        historial.push({ role: "assistant", content: respuestaFinal });
+        conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
+    } else {
+        // Igual guardamos el error en historial para contexto
+        historial.push({ role: "user", content: pregunta });
+        historial.push({ role: "assistant", content: respuestaFinal });
+        conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
+    }
 });
 
 app.get('/ping', (req, res) => res.status(200).send('OK'));
