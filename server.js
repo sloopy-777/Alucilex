@@ -265,35 +265,38 @@ function calcularSimilitud(s1, s2) {
     }
     return (1.0 - (costs[s2Lower.length] / Math.max(s1Lower.length, s2Lower.length)));
 }
-
 function buscarEnDiccionario(texto) {
     // 1. Normalización inicial
     const textoNormalizado = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     
+    // ORDEN DE PRIORIDAD: Ordenamos las claves de mayor a menor longitud.
+    // Esto garantiza que frases largas ("modos de adquirir el dominio") se evalúen antes que palabras cortas ("dominio").
+    const clavesOrdenadas = Object.keys(diccionarioOro).sort((a, b) => b.length - a.length);
+
     // 2. Búsqueda Exacta (Prioritaria y más rápida)
-    for (const [concepto, articulo] of Object.entries(diccionarioOro)) {
+    for (const concepto of clavesOrdenadas) {
+        const articulo = diccionarioOro[concepto];
         const regex = new RegExp(`\\b${concepto}\\b`, 'i');
         if (regex.test(textoNormalizado)) {
             return articulo;
         }
     }
 
-    // 3. Búsqueda Difusa (Fuzzy Match) para absorber errores de tipeo y palabras unidas
-    // Limpiamos palabras conectoras para analizar solo los conceptos clave del usuario
+    // 3. Búsqueda Difusa (Fuzzy Match) para absorber errores de tipeo
     const palabrasClave = textoNormalizado.split(/[\s,.-]+/).filter(p => p.length > 3 && !['que', 'como', 'cual', 'para'].includes(p));
     
-    for (const [concepto, articulo] of Object.entries(diccionarioOro)) {
+    for (const concepto of clavesOrdenadas) {
+        const articulo = diccionarioOro[concepto];
         const conceptoNormalizado = concepto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         
-        // A) Tolerancia a errores de tipeo (Ej: "laprecripcion" vs "prescripcion")
+        // A) Tolerancia a errores de tipeo
         for (let palabra of palabrasClave) {
-            // Exigimos un 70% de similitud para disparar la regla del diccionario
             if (calcularSimilitud(palabra, conceptoNormalizado) >= 0.70) {
                 return articulo;
             }
         }
         
-        // B) Tolerancia a palabras pegadas sin error ortográfico (Ej: "laprescripcion")
+        // B) Tolerancia a palabras pegadas
         if (textoNormalizado.replace(/\s+/g, '').includes(conceptoNormalizado.replace(/\s+/g, ''))) {
              return articulo;
         }
@@ -302,8 +305,6 @@ function buscarEnDiccionario(texto) {
     return null;
 }
 // =======================================================
-// =======================================================
-
 function hashTexto(texto) {
     return crypto.createHash('sha256').update(texto).digest('hex');
 }
@@ -483,18 +484,16 @@ app.post('/api/consultar', async (req, res) => {
     // ========== PROMPT DEL SISTEMA (PROFESOR Y VALIDADOR) ==========
     const systemPrompt = 
         "Eres Alucilex, un riguroso Profesor Titular de Derecho Civil chileno. Sigue estas REGLAS DE ORO al pie de la letra:\n\n" +
-        "1. PROHIBICIÓN DE REPETIR LEY: El servidor ya le imprimió al alumno el texto literal de la ley. ESTÁ ESTRICTAMENTE PROHIBIDO que transcribas o repitas artículos del Código Civil.\n" +
-        "2. ANÁLISIS EXHAUSTIVO: Basa tu respuesta PRINCIPALMENTE en la sección 'APUNTES Y DOCTRINA' del contexto.\n" +
-        "3. PROTOCOLO DE COMPLEMENTACIÓN Y CONTRASTE: Si aportas conocimiento para complementar los apuntes, DEBES:\n" +
-        "   a) Verificar que NO contradiga los apuntes.\n" +
-        "   b) Declarar explícitamente la fuente oficial chilena de tu aporte (ej. 'Según la jurisprudencia de la Corte Suprema', 'Siguiendo a René Ramos Pazos o Claro Solar').\n" +
+        "1. PROHIBICIÓN ABSOLUTA DE REPETIR LEY O ENCABEZADOS: El servidor ya le imprimió al alumno el texto literal de la ley y su número. ESTÁ ESTRICTAMENTE PROHIBIDO iniciar tu respuesta repitiendo el artículo, copiando la ley o poniendo íconos de balanza. Arranca de inmediato con el 'CONCEPTO DOCTRINARIO'.\n" +
+        "2. PROFUNDIDAD DOGMÁTICA OBLIGATORIA: Tus respuestas no pueden ser superficiales o escuetas. DEBES interconectar instituciones. Por ejemplo, si te preguntan por contratos bilaterales, debes obligatoriamente explicar su importancia práctica mencionando la condición resolutoria tácita, la teoría de los riesgos y la regla 'la mora purga la mora'. Aplica esta misma profundidad analítica y relacional a cualquier tema consultado.\n" +
+        "3. PROTOCOLO DE COMPLEMENTACIÓN: Basa tu respuesta PRINCIPALMENTE en la sección 'APUNTES Y DOCTRINA' del contexto. Si falta información, usa tu conocimiento experto del Derecho Chileno citando a Claro Solar, Alessandri, Somarriva o Ramos Pazos.\n" +
         "4. TABLAS INQUEBRANTABLES: Usa sintaxis estricta Markdown (|---|---|) para cualquier tabla de clasificación.\n" +
         "5. ESTRUCTURA OBLIGATORIA:\n" +
         "   - ### CONCEPTO DOCTRINARIO\n" +
         "   - ### ELEMENTOS O REQUISITOS\n" +
         "   - ### CARACTERÍSTICAS\n" +
         "   - ### CLASIFICACIONES\n" +
-        "   - ### INTEGRACIÓN DE FUENTES\n" +
+        "   - ### INTEGRACIÓN DE FUENTES (Interconecta con otras instituciones clave del Código Civil)\n" +
         "   - ### EJEMPLOS PRÁCTICOS\n" +
         "   - ### CONCLUSIÓN";
 
