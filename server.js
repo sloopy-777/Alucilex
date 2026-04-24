@@ -40,12 +40,15 @@ const diccionarioOro = {
     "domicilio civil": 59,
     "pluralidad de domicilios": 67,
     "nasciturus": 74,
+    "existencia legal": 74,
+    "presuncion de concepcion": 76,
     "muerte presunta": 80,
     "esponsales": 98,
     "matrimonio": 102,
     "sociedad conyugal": 135,
     "bienes familiares": 141,
     "patrimonio reservado": 150,
+    "separacion total de bienes": 152,
     "filiacion": 186,
     "patria potestad": 243,
     "estado civil": 304,
@@ -57,15 +60,24 @@ const diccionarioOro = {
     "bienes muebles": 567,
     "bienes inmuebles": 568,
     "muebles por anticipacion": 571,
+    "cosas incorporales": 576,
+    "derechos reales": 577,
+    "derechos personales": 578,
+    "creditos": 578,
     "dominio": 582,
     "propiedad": 582,
-    "modos de adquirir": 588,
+    "modos de adquirir el dominio": 588,
     "ocupacion": 606,
     "accesion": 643,
     "tradicion": 670,
+    "reserva de dominio": 680,
     "inscripcion conservatoria": 686,
     "posesion": 700,
+    "posesion regular": 702,
     "buena fe subjetiva": 706,
+    "posesion irregular": 708,
+    "posesion violenta": 710,
+    "posesion clandestina": 713,
     "mero tenedor": 714,
     "mera tenencia": 714,
     "fideicomiso": 733,
@@ -80,6 +92,9 @@ const diccionarioOro = {
     "denuncia de obra nueva": 930,
     "accion de obra ruinosa": 932,
     "sucesion por causa de muerte": 951,
+    "asignaciones por causa de muerte": 953,
+    "apertura de la sucesion": 955,
+    "delacion": 956,
     "indignidad": 968,
     "sucesion intestada": 980,
     "derecho de representacion": 984,
@@ -88,9 +103,12 @@ const diccionarioOro = {
     "cuarta de mejoras": 1184,
     "acervos imaginarios": 1185,
     "desheredamiento": 1207,
+    "lesion en la aceptacion de herencia": 1234,
+    "herencia yacente": 1241,
     "beneficio de inventario": 1247,
     "albacea": 1270,
     "particion": 1317,
+    "lesion en la particion": 1348,
     "beneficio de separacion": 1378,
     "fuentes de las obligaciones": 1437,
     "contrato": 1438,
@@ -102,8 +120,21 @@ const diccionarioOro = {
     "promesa de hecho ajeno": 1450,
     "vicios del consentimiento": 1451,
     "error": 1452,
+    "error de hecho": 1453,
+    "error obstaculo": 1453,
+    "error sustancial": 1454,
+    "error en calidades accidentales": 1454,
+    "error en la persona": 1455,
     "fuerza": 1456,
+    "fuerza moral": 1456,
+    "fuerza por tercero": 1457,
+    "dolo determinante": 1458,
+    "presuncion de dolo": 1459,
+    "objeto": 1460,
+    "cosa futura": 1461,
     "objeto ilicito": 1464,
+    "condonacion de dolo futuro": 1465,
+    "contratos prohibidos por ley": 1466,
     "causa": 1467,
     "causa ilicita": 1467,
     "obligaciones naturales": 1470,
@@ -127,6 +158,8 @@ const diccionarioOro = {
     "indemnizacion de perjuicios": 1556,
     "intereses moratorios": 1559,
     "interpretacion de los contratos": 1560,
+    "resciliacion": 1567,
+    "mutuo disenso": 1567,
     "pago efectivo": 1568,
     "imputacion del pago": 1595,
     "pago por consignacion": 1599,
@@ -136,6 +169,7 @@ const diccionarioOro = {
     "novacion": 1628,
     "remision": 1652,
     "compensacion": 1655,
+    "confusion": 1665,
     "perdida de la cosa que se debe": 1670,
     "nulidad absoluta": 1681,
     "nulidad relativa": 1681,
@@ -143,38 +177,62 @@ const diccionarioOro = {
     "instrumento publico": 1699,
     "simulacion": 1707,
     "contraescrituras": 1707,
+    "regimenes patrimoniales": 1715,
+    "capitulaciones matrimoniales": 1715,
+    "haber de la sociedad conyugal": 1725,
+    "donaciones remuneratorias": 1738,
+    "presuncion de dominio de la sociedad conyugal": 1739,
+    "participacion en los gananciales": 1792,
     "compraventa": 1793,
+    "arras": 1803,
+    "venta de cosa ajena": 1815,
+    "venta con relacion a la cabida": 1831,
     "saneamiento de la eviccion": 1837,
+    "eviccion parcial": 1854,
     "vicios redhibitorios": 1857,
+    "accion estimatoria": 1868,
+    "quanti minoris": 1868,
     "pacto comisorio": 1877,
     "pacto comisorio calificado": 1879,
     "pacto de retroventa": 1881,
+    "pacto de retracto": 1886,
     "lesion enorme": 1889,
+    "lesion enorme en la permuta": 1900,
     "cesion de derechos": 1901,
     "cesion de derecho de herencia": 1909,
     "arrendamiento": 1915,
+    "arrendamiento de transporte": 2013,
     "sociedad": 2053,
     "mandato": 2116,
+    "delegacion del mandato": 2135,
     "comodato": 2174,
     "prestamo de uso": 2174,
     "accion de precario": 2195,
     "mutuo": 2196,
     "prestamo de consumo": 2196,
     "deposito": 2211,
+    "deposito propiamente dicho": 2215,
     "secuestro": 2249,
     "renta vitalicia": 2259,
     "juego y apuesta": 2264,
+    "censo vitalicio": 2279,
     "cuasicontratos": 2284,
     "agencia oficiosa": 2286,
     "pago de lo no debido": 2295,
     "comunidad": 2304,
     "responsabilidad extracontractual": 2314,
+    "solidaridad extracontractual": 2317,
+    "capacidad extracontractual": 2319,
     "responsabilidad por el hecho ajeno": 2320,
     "ruina de edificio": 2323,
     "presuncion de culpabilidad": 2329,
+    "exposicion imprudente al daño": 2330,
     "fianza": 2336,
+    "accion de reembolso": 2370,
     "prenda": 2384,
     "hipoteca": 2407,
+    "hipoteca de cuota": 2417,
+    "hipoteca sobre bienes futuros": 2419,
     "transaccion": 2446,
     "derecho de prenda general": 2465,
     "accion oblicua": 2466,
@@ -183,7 +241,6 @@ const diccionarioOro = {
     "prelacion de creditos": 2469,
     "prescripcion": 2492
 };
-
 function buscarEnDiccionario(texto) {
     const textoNormalizado = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     for (const [concepto, articulo] of Object.entries(diccionarioOro)) {
@@ -232,6 +289,52 @@ app.post('/api/consultar', async (req, res) => {
     if (!conversaciones.has(sessionId)) conversaciones.set(sessionId, []);
     let historial = conversaciones.get(sessionId);
     if (historial.length > MAX_HISTORIAL) historial = historial.slice(-MAX_HISTORIAL);
+
+    // =========================================================================
+    // FASE 0: AGENTE ENRUTADOR (TRIAJE DE AMBIGÜEDAD Y CONTRAPREGUNTA)
+    // =========================================================================
+    try {
+        const mensajesTriaje = [
+            { 
+                role: "system", 
+                content: "Eres un Agente Enrutador Jurídico. Tu misión es detectar si la pregunta del usuario mezcla conceptos inconexos (ej. 'el matrimonio es un modo de adquirir el dominio'), es muy ambigua, o tiene graves errores. " +
+                         "Si detectas ambigüedad, debes recomponer la pregunta formulando una breve opción aclaratoria para el usuario. " +
+                         "FORMATO ESTRICTO: Si hay ambigüedad, responde empezando exactamente con la palabra 'ACLARACION:' seguida de tu pregunta (ej. 'ACLARACION: ¿Deseas saber sobre el matrimonio o sobre los modos de adquirir el dominio?'). " +
+                         "Si la pregunta es clara, O si el usuario está respondiendo de forma coherente a una aclaración previa tuya (ej. responde 'del dominio'), responde ÚNICAMENTE con la palabra 'CLARA'." 
+            },
+            ...historial.slice(-4), // Inyectamos el historial para que entienda el contexto de la respuesta del usuario
+            { role: "user", content: pregunta }
+        ];
+
+        const triajeResponse = await openai.chat.completions.create({
+            model: "deepseek/deepseek-chat",
+            messages: mensajesTriaje,
+            temperature: 0.0, // Cero creatividad, máxima precisión analítica
+            max_tokens: 150
+        });
+
+        const triajeText = triajeResponse.choices[0]?.message?.content?.trim() || "CLARA";
+
+        if (triajeText.startsWith("ACLARACION:")) {
+            const textoAclaracion = triajeText.replace("ACLARACION:", "").trim();
+            const respuestaAclaratoria = `🤖 **Filtro de Precisión:**\nHe notado que tu consulta abarca temas distintos. ${textoAclaracion}\n\n*(Por favor, indícame tu preferencia para darte la información exacta)*`;
+            
+            console.log("🛑 Ambigüedad detectada. Deteniendo DB y enviando contrapregunta al usuario.");
+            res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+            res.write(`data: ${JSON.stringify({ content: respuestaAclaratoria })}\n\n`);
+            res.write('data: [DONE]\n\n');
+            res.end();
+
+            // Guardamos esta interacción en la memoria para que el siguiente mensaje del usuario tenga sentido
+            historial.push({ role: "user", content: pregunta });
+            historial.push({ role: "assistant", content: respuestaAclaratoria });
+            conversaciones.set(sessionId, historial.slice(-MAX_HISTORIAL));
+            return; // ⛔ Cortamos la ejecución aquí. No se busca en la DB ni se inyecta la ley aún.
+        }
+    } catch (errorTriaje) {
+        console.log("⚠️ Error en Agente Enrutador, saltando fase de triaje...", errorTriaje.message);
+    }
+    // =========================================================================
 
     let contextoLey = "";
     let contextoApuntes = "";
