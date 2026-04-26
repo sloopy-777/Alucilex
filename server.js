@@ -364,7 +364,9 @@ app.post('/api/consultar', async (req, res) => {
 
     let contextoLey = "";
     let contextoApuntes = "";
+    let fuentesApuntes = [];
     let articuloExactoEncontrado = false;
+    let articuloDetectadoPorDiccionario = false;
     let numeroArticuloDetectado = null;
 
     const matchNumero = pregunta.match(/(?:art(?:[íi]culo|\.?)?\s*)?(\d{1,4})/i);
@@ -372,23 +374,51 @@ app.post('/api/consultar', async (req, res) => {
         numeroArticuloDetectado = matchNumero[1];
     } else {
         const detectadoDiccionario = buscarEnDiccionario(pregunta);
-        if (detectadoDiccionario) numeroArticuloDetectado = detectadoDiccionario;
+        if (detectadoDiccionario) {
+            numeroArticuloDetectado = detectadoDiccionario;
+            articuloDetectadoPorDiccionario = true;
+        }
     }
 
     if (numeroArticuloDetectado && parseInt(numeroArticuloDetectado) >= 1 && parseInt(numeroArticuloDetectado) <= 2524) {
-    const { data, error } = await supabase
-        .from('fragmentos_legales')
-        .select('contenido, articulo_numero, libro, titulo')
-        .eq('tipo', 'ley')
-        .eq('numero_limpio', numeroArticuloDetectado)
-        .in('libro', [1, 2, 3, 4])          // <-- solo artículos del Código Civil
-        .order('articulo_numero', { ascending: true })
-        .limit(1);  
-        if (!error && data && data.length > 0) {
-            // MAGIA V6: Etiquetado de identidad reforzado
-            contextoLey += `[LEY ESTRICTA - CÓDIGO CIVIL - Art. ${data[0].articulo_numero}]\n${data[0].contenido}\n\n`;
+        // Intento 1: columna de artículo exacto usada por la ingesta vigente
+        const { data: dataExacta, error: errorExacto } = await supabase
+            .from('fragmentos_legales')
+            .select('contenido, articulo_numero, libro, titulo')
+            .eq('tipo', 'ley')
+            .eq('articulo_numero', String(numeroArticuloDetectado))
+            .order('articulo_numero', { ascending: true })
+            .limit(1);
+
+        if (!errorExacto && dataExacta && dataExacta.length > 0) {
+            contextoLey += `[LEY ESTRICTA - CÓDIGO CIVIL - Art. ${dataExacta[0].articulo_numero}]\n${dataExacta[0].contenido}\n\n`;
             articuloExactoEncontrado = true;
+        } else {
+            // Intento 2 (compatibilidad): bases antiguas con numero_limpio
+            const { data: dataLegacy, error: errorLegacy } = await supabase
+                .from('fragmentos_legales')
+                .select('contenido, articulo_numero, libro, titulo')
+                .eq('tipo', 'ley')
+                .eq('numero_limpio', numeroArticuloDetectado)
+                .order('articulo_numero', { ascending: true })
+                .limit(1);
+            if (!errorLegacy && dataLegacy && dataLegacy.length > 0) {
+                contextoLey += `[LEY ESTRICTA - CÓDIGO CIVIL - Art. ${dataLegacy[0].articulo_numero}]\n${dataLegacy[0].contenido}\n\n`;
+                articuloExactoEncontrado = true;
+            }
         }
+    }
+
+    // MODO ESTRICTO: si no se logra mapear concepto/artículo, pedimos precisión antes de continuar.
+    if (!numeroArticuloDetectado) {
+        const aclaracionEstrica =
+            "🤖 **Necesito mayor precisión para responder con rigor académico.**\n" +
+            "Indica el concepto jurídico exacto o el número de artículo (ej: 'tradición' o 'artículo 670').";
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+        res.write(`data: ${JSON.stringify({ content: aclaracionEstrica })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
     }
 
     try {
@@ -421,11 +451,15 @@ app.post('/api/consultar', async (req, res) => {
 
         const { data: apuntes, error: errApuntes } = await supabase.rpc('buscar_fragmentos', {
             query_embedding: embedding,
-            filtro_tipo: 'apunte_personal',
-            match_threshold: 0.15,
-            match_count: 15
+            filtro_tipo: 'doctrina',
+            match_threshold: 0.24,
+            match_count: 10
         });
         if (!errApuntes && apuntes && apuntes.length > 0) {
+            fuentesApuntes = apuntes.slice(0, 3).map(f => ({
+                titulo: f.articulo_titulo_completo || 'Fragmento doctrinal',
+                preview: (f.contenido || '').substring(0, 180).trim()
+            }));
             // MAGIA V6: Etiquetado de identidad reforzado
             contextoApuntes += apuntes.map(f => `[APUNTE DOCENTE - EXPLICACIÓN DIDÁCTICA - ${f.articulo_titulo_completo}]\n${f.contenido}`).join('\n\n');
         }
@@ -438,19 +472,37 @@ app.post('/api/consultar', async (req, res) => {
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
 
+    if (!contextoLey && !contextoApuntes) {
+        const sinEvidencia = "⚠️ No encontré evidencia suficiente en la base legal para responder con precisión. Reformula indicando artículo, institución o tema específico.";
+        res.write(`data: ${JSON.stringify({ content: sinEvidencia })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+    }
+
     if (contextoLey) {
         // Adaptación de la expresión regular para coincidir con la nueva etiqueta de LEY ESTRICTA
-        const inyeccion = `### ⚖️ ARTÍCULO ${numeroArticuloDetectado || ''}\n${contextoLey.replace(/\[LEY ESTRICTA - .*? - Art\. \d+\]\s*Art\. \d+\./g, '')}\n---\n\n`;
+        const origenDeteccion = articuloDetectadoPorDiccionario ? " (detectado por diccionario de conceptos)" : "";
+        const inyeccion = `### ⚖️ ARTÍCULO EXACTO APLICABLE${origenDeteccion}\nArt. ${numeroArticuloDetectado || '?'} del Código Civil\n${contextoLey.replace(/\[LEY ESTRICTA - .*? - Art\. \d+\]\s*Art\. \d+\./g, '')}\n---\n\n`;
         res.write(`data: ${JSON.stringify({ content: inyeccion })}\n\n`);
+    }
+
+    if (fuentesApuntes.length > 0) {
+        const bloqueFuentes = [
+            "### 📚 FUENTES DOCTRINALES RECUPERADAS",
+            ...fuentesApuntes.map((f, i) => `${i + 1}. **${f.titulo}**: ${f.preview}...`)
+        ].join('\n');
+        res.write(`data: ${JSON.stringify({ content: `${bloqueFuentes}\n\n` })}\n\n`);
     }
 
     const systemPrompt = 
         "Eres Alucilex, un riguroso Profesor Titular de Derecho Civil chileno. Sigue estas REGLAS DE ORO al pie de la letra:\n\n" +
-        "1. PROHIBICIÓN ABSOLUTA DE REPETIR LEY O ENCABEZADOS: El servidor ya le imprimió al alumno el texto literal de la ley y su número. ESTÁ ESTRICTAMENTE PROHIBIDO iniciar tu respuesta repitiendo el artículo, copiando la ley o poniendo íconos de balanza. Arranca de inmediato con el 'CONCEPTO DOCTRINARIO'.\n" +
+        "1. PROFUNDIDAD ACADÉMICA OBLIGATORIA: Escribe para estudiantes de Derecho. Respuesta extensa, pedagógica y con desarrollo doctrinal real; evita respuestas breves o telegráficas.\n" +
         "2. PROFUNDIDAD DOGMÁTICA OBLIGATORIA: Tus respuestas no pueden ser superficiales o escuetas. DEBES interconectar instituciones. Por ejemplo, si te preguntan por contratos bilaterales, debes obligatoriamente explicar su importancia práctica mencionando la condición resolutoria tácita, la teoría de los riesgos y la regla 'la mora purga la mora'. Aplica esta misma profundidad analítica y relacional a cualquier tema consultado.\n" +
-        "3. PROTOCOLO DE COMPLEMENTACIÓN: Basa tu respuesta PRINCIPALMENTE en la sección 'APUNTES Y DOCTRINA' del contexto que están marcados como [APUNTE DOCENTE]. Si falta información, usa tu conocimiento experto del Derecho Chileno citando a Claro Solar, Alessandri, Somarriva o Ramos Pazos.\n" +
+        "3. PROTOCOLO DE COMPLEMENTACIÓN: Basa tu respuesta PRINCIPALMENTE en la sección 'APUNTES Y DOCTRINA' del contexto que están marcados como [APUNTE DOCENTE]. PROHIBIDO completar con conocimiento externo no presente en los fragmentos.\n" +
         "4. TABLAS INQUEBRANTABLES: Usa sintaxis estricta Markdown (|---|---|) para cualquier tabla de clasificación.\n" +
-        "5. ESTRUCTURA OBLIGATORIA:\n" +
+        "5. TRAZABILIDAD OBLIGATORIA: Cierra tu respuesta con una sección '### FUENTES USADAS' listando artículos y/o títulos doctrinales usados en viñetas.\n" +
+        "6. ESTRUCTURA OBLIGATORIA (desarrolla cada sección con sustancia, no con una sola línea):\n" +
         "   - ### CONCEPTO DOCTRINARIO\n" +
         "   - ### ELEMENTOS O REQUISITOS\n" +
         "   - ### CARACTERÍSTICAS\n" +
