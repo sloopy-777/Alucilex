@@ -21,9 +21,9 @@ function fragmentarTextoConSolape(texto, maxCaracteres = 1100, solape = 180) {
         .map(p => limpiarTexto(p))
         .filter(Boolean);
 
-    const unidades = (parrafos.length ? parrafos.join('\n\n') : texto)
-        .split(/(?:[.!?]+\s+)|\n+/)
-        .map(u => u.trim())
+    const baseTexto = parrafos.length ? parrafos.join('\n\n') : texto;
+    const unidades = (baseTexto.match(/[^.!?\n]+[.!?]?/g) || [baseTexto])
+        .map(u => u.replace(/\s+/g, ' ').trim())
         .filter(Boolean);
 
     if (!unidades.length) return fragmentos;
