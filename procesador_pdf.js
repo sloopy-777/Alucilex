@@ -1,9 +1,10 @@
-// ALUCILEX - Procesador y Fragmentador de PDFs (Motor Nativo pdfreader)
+// ALUCILEX - Procesador y Fragmentador de PDFs (pdf-parse + fallback pdfreader)
 // Ubicación: C:\Alucilex\procesador_pdf.js
 
 const fs = require('fs');
 const path = require('path');
 const { PdfReader } = require('pdfreader');
+const pdf = require('pdf-parse');
 
 const CARPETA_ORIGEN = path.join(__dirname, 'data', 'apuntes_pdf');
 const ARCHIVO_DESTINO = path.join(__dirname, 'data', 'apuntes_procesados.json');
@@ -13,20 +14,34 @@ function limpiarTexto(texto) {
     return texto.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function fragmentarTexto(texto, maxCaracteres = 1500) {
+function fragmentarTextoConSolape(texto, maxCaracteres = 1100, solape = 180) {
     const fragmentos = [];
-    const oraciones = texto.match(/[^.!?]+[.!?]+/g) || [texto];
+    const parrafos = texto
+        .split(/\n{2,}/)
+        .map(p => limpiarTexto(p))
+        .filter(Boolean);
+
+    const unidades = (parrafos.length ? parrafos.join('\n\n') : texto)
+        .split(/(?:[.!?]+\s+)|\n+/)
+        .map(u => u.trim())
+        .filter(Boolean);
+
+    if (!unidades.length) return fragmentos;
+
     let bloqueActual = "";
 
-    for (let oracion of oraciones) {
-        if ((bloqueActual.length + oracion.length) > maxCaracteres) {
+    for (const unidad of unidades) {
+        if ((bloqueActual.length + unidad.length + 1) > maxCaracteres) {
             if (bloqueActual.trim().length > 10) fragmentos.push(bloqueActual.trim());
-            bloqueActual = oracion;
+
+            const cola = bloqueActual.slice(Math.max(0, bloqueActual.length - solape)).trim();
+            bloqueActual = `${cola} ${unidad}`.trim();
         } else {
-            bloqueActual += " " + oracion;
+            bloqueActual = `${bloqueActual} ${unidad}`.trim();
         }
     }
     if (bloqueActual.trim().length > 10) fragmentos.push(bloqueActual.trim());
+
     return fragmentos;
 }
 
@@ -46,6 +61,22 @@ function extraerTextoPdfReader(rutaArchivo) {
             }
         });
     });
+}
+
+async function extraerTextoPdfParse(rutaArchivo) {
+    const buffer = fs.readFileSync(rutaArchivo);
+    const data = await pdf(buffer);
+    return data?.text || "";
+}
+
+async function extraerTextoSeguro(rutaArchivo) {
+    try {
+        const texto = await extraerTextoPdfParse(rutaArchivo);
+        if (texto && texto.trim().length > 100) return texto;
+    } catch (_) {
+        // Fallback silencioso al parser secundario
+    }
+    return extraerTextoPdfReader(rutaArchivo);
 }
 
 async function procesarDocumentos() {
@@ -73,7 +104,7 @@ async function procesarDocumentos() {
         console.log(`📄 [${i + 1}/${archivos.length}] Escaneando: ${nombreArchivo}...`);
 
         try {
-            const textoCrudo = await extraerTextoPdfReader(rutaCompleta);
+            const textoCrudo = await extraerTextoSeguro(rutaCompleta);
             const textoLimpio = limpiarTexto(textoCrudo);
             
             // Escudo: Si el PDF son puras imágenes escaneadas, lo saltamos
@@ -82,7 +113,7 @@ async function procesarDocumentos() {
                 continue; 
             }
 
-            const fragmentosArchivo = fragmentarTexto(textoLimpio);
+            const fragmentosArchivo = fragmentarTextoConSolape(textoCrudo);
 
             fragmentosArchivo.forEach((frag, index) => {
                 todosLosFragmentos.push({

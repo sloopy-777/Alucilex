@@ -54,6 +54,18 @@ function truncar(texto, max) {
     return texto.substring(0, max) + "... [truncado]";
 }
 
+function extraerKeywordsConsulta(texto) {
+    const stopwords = new Set([
+        'que', 'como', 'cual', 'cuales', 'donde', 'cuando', 'para', 'sobre', 'desde',
+        'entre', 'esta', 'este', 'estos', 'estas', 'del', 'las', 'los', 'una', 'uno',
+        'unos', 'unas', 'por', 'con', 'sin', 'segun', 'ser', 'son', 'es', 'al', 'de',
+        'la', 'el', 'y', 'o', 'u', 'en'
+    ]);
+    const normalizado = normalizarClave(texto);
+    const tokens = normalizado.split(/\s+/).filter(t => t.length >= 4 && !stopwords.has(t));
+    return [...new Set(tokens)].slice(0, 8);
+}
+
 async function generarEmbeddingConsulta(texto) {
     const clave = normalizarClave(texto);
     if (cacheEmbeddings.has(clave)) {
@@ -161,7 +173,9 @@ async function realizarConsultaLegal(preguntaUsuario) {
 
         if (resultados.length < 5) {
             console.log("   Complementando con palabras clave...");
-            const kwResults = await busquedaPorPalabrasClave(PALABRAS_PROFUNDIDAD, 8);
+            const palabrasConsulta = extraerKeywordsConsulta(preguntaUsuario);
+            const fallbackKeywords = palabrasConsulta.length ? palabrasConsulta : PALABRAS_PROFUNDIDAD;
+            const kwResults = await busquedaPorPalabrasClave(fallbackKeywords, 8);
             resultados.push(...kwResults);
         }
 
