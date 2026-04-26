@@ -1,4 +1,4 @@
-// ALUCILEX - Procesador y Fragmentador de PDFs (Motor Nativo pdfreader)
+// ALUCILEX - Procesador y Fragmentador de PDFs (pdf-parse + fallback pdfreader)
 // Ubicación: C:\Alucilex\procesador_pdf.js
 
 const fs = require('fs');
@@ -22,7 +22,7 @@ function fragmentarTextoConSolape(texto, maxCaracteres = 1100, solape = 180) {
         .filter(Boolean);
 
     const unidades = (parrafos.length ? parrafos.join('\n\n') : texto)
-        .split(/(?<=[.!?])\s+/)
+        .split(/(?:[.!?]+\s+)|\n+/)
         .map(u => u.trim())
         .filter(Boolean);
 

@@ -20,6 +20,14 @@ const CASOS = [
     { q: 'prescripcion', expected: '2492' }
 ];
 
+function validarEntorno() {
+    const faltantes = [];
+    if (!process.env.SUPABASE_URL) faltantes.push('SUPABASE_URL');
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) faltantes.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (!process.env.OPENROUTER_API_KEY) faltantes.push('OPENROUTER_API_KEY');
+    return faltantes;
+}
+
 async function embedding(texto) {
     const res = await openai.embeddings.create({
         model: 'openai/text-embedding-3-small',
@@ -41,6 +49,13 @@ async function recuperarLey(queryEmbedding, k = 5) {
 }
 
 async function main() {
+    const faltantes = validarEntorno();
+    if (faltantes.length) {
+        console.error(`❌ Variables de entorno faltantes: ${faltantes.join(', ')}`);
+        console.error('   Define las credenciales requeridas para ejecutar la evaluación de precisión.');
+        process.exit(1);
+    }
+
     console.log('\n📊 Evaluación de recuperación legal (Recall@5)\n');
     let hits = 0;
 
@@ -59,7 +74,10 @@ async function main() {
 }
 
 main().catch(err => {
-    console.error('❌ Error en evaluación:', err.message);
+    if (/connection/i.test(err.message)) {
+        console.error('❌ Error en evaluación: sin conectividad a OpenRouter o Supabase.');
+    } else {
+        console.error('❌ Error en evaluación:', err.message);
+    }
     process.exit(1);
 });
-
